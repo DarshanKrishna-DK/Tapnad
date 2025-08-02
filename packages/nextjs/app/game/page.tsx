@@ -817,6 +817,28 @@ export default function GamePage() {
                 {/* Team Selection */}
                 <div className="bg-black/40 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-6 border-2 border-purple-400/50 shadow-2xl">
                   <h3 className="text-xl md:text-2xl font-bold text-white mb-4 text-center">Choose Your Racing Team</h3>
+
+                  {/* Game State Indicator */}
+                  <div className="mb-4 p-3 rounded-lg border-2 bg-gradient-to-r from-black/60 to-gray-900/60">
+                    <p className="text-center text-sm font-bold">
+                      Contract State:{" "}
+                      <span className={`${Number(blockchainGameState) === 0 ? "text-green-400" : "text-red-400"}`}>
+                        {Number(blockchainGameState) === 0
+                          ? "🟢 LOBBY (Ready to Join)"
+                          : Number(blockchainGameState) === 1
+                            ? "🔴 GAME IN PROGRESS"
+                            : "🔴 GAME FINISHED"}
+                      </span>
+                    </p>
+                    {Number(blockchainGameState) !== 0 && (
+                      <div className="mt-2 p-2 bg-red-900/30 border border-red-400/50 rounded">
+                        <p className="text-red-200 text-xs text-center font-semibold">
+                          ⚠️ Players cannot join right now. Organizer must reset the game first.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <p className="text-center text-green-400 text-sm mb-4 font-semibold bg-black/30 rounded-lg p-2 border border-green-400/30">
                     FREE to join • No payment required • Pure racing skill
                   </p>
@@ -849,10 +871,14 @@ export default function GamePage() {
                     {!hasJoined && (
                       <button
                         onClick={() => joinTeam(0)}
-                        disabled={isJoining}
-                        className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-black font-bold py-2 md:py-3 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-yellow-300/50"
+                        disabled={isJoining || Number(blockchainGameState) !== 0}
+                        className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-black font-bold py-2 md:py-3 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-yellow-300/50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isJoining ? "Joining Race..." : "Join Bitcoin Racing Team"}
+                        {isJoining
+                          ? "Joining Race..."
+                          : Number(blockchainGameState) !== 0
+                            ? "Game Not in Lobby"
+                            : "Join Bitcoin Racing Team"}
                       </button>
                     )}
                     {currentPlayerTeam === 0 && (
@@ -888,10 +914,14 @@ export default function GamePage() {
                     {!hasJoined && (
                       <button
                         onClick={() => joinTeam(1)}
-                        disabled={isJoining}
-                        className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-2 md:py-3 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-blue-300/50"
+                        disabled={isJoining || Number(blockchainGameState) !== 0}
+                        className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-2 md:py-3 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-blue-300/50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isJoining ? "Joining Race..." : "Join Ethereum Racing Team"}
+                        {isJoining
+                          ? "Joining Race..."
+                          : Number(blockchainGameState) !== 0
+                            ? "Game Not in Lobby"
+                            : "Join Ethereum Racing Team"}
                       </button>
                     )}
                     {currentPlayerTeam === 1 && (
@@ -946,6 +976,15 @@ export default function GamePage() {
                   <div className="bg-black/40 backdrop-blur-sm rounded-xl p-4 md:p-6 border-2 border-purple-400/50 shadow-2xl">
                     <h4 className="text-lg font-bold text-purple-300 mb-4 text-center">Race Control Center</h4>
                     <div className="space-y-3">
+                      {Number(blockchainGameState) !== 0 && (
+                        <div className="p-3 bg-red-900/30 border border-red-400/50 rounded-lg">
+                          <p className="text-red-200 text-sm font-bold text-center">🚨 ORGANIZER ACTION REQUIRED</p>
+                          <p className="text-red-300 text-xs text-center mt-1">
+                            Game is stuck in {Number(blockchainGameState) === 1 ? "In Progress" : "Finished"} state.
+                            Click Reset to allow new players to join.
+                          </p>
+                        </div>
+                      )}
                       <button
                         onClick={startGame}
                         disabled={!canStartGame || isStarting}
@@ -959,9 +998,13 @@ export default function GamePage() {
                       </button>
                       <button
                         onClick={resetGame}
-                        className="w-full bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-red-400/50"
+                        className={`w-full text-white font-bold py-2 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 ${
+                          Number(blockchainGameState) !== 0
+                            ? "bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 border-red-400/50 animate-pulse"
+                            : "bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 border-gray-400/50"
+                        }`}
                       >
-                        Reset Championship
+                        {Number(blockchainGameState) !== 0 ? "🔄 RESET GAME (Required)" : "Reset Championship"}
                       </button>
                     </div>
                   </div>
