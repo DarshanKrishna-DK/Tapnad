@@ -55,7 +55,12 @@ const ORGANIZER_ADDRESS = "0x742d35Cc6734C0532925a3b8D400aE1cF92C1c0a";
 - **Events**: Real-time updates via WebSocket
 - **Mobile**: Optimized for phone presentations
 
-### 6. Quick Start Commands
+### 6. Organizer Setup
+- **Primary Organizer**: `0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227` (Set in smart contract)
+- **Secondary Organizer**: `0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F` (UI access only)
+- **Note**: Both addresses see organizer controls, but only primary can execute contract functions
+
+### 7. Quick Start Commands
 ```bash
 # Deploy contracts
 yarn deploy

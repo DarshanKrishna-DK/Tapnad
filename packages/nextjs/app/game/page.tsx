@@ -12,8 +12,11 @@ import {
 } from "~~/hooks/scaffold-eth";
 import { notification } from "~~/utils/scaffold-eth";
 
-// 🚨 IMPORTANT: Replace with YOUR wallet address for demo control
-const ORGANIZER_ADDRESS = "0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227";
+// 🚨 IMPORTANT: Demo organizer addresses (both can control the game)
+const ORGANIZER_ADDRESSES = [
+  "0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227", // Primary organizer (deployed contract)
+  "0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F", // Secondary organizer
+];
 interface CoinPosition {
   x: number;
   y: number;
@@ -239,7 +242,10 @@ export default function GamePage() {
   };
 
   // Helper variables
-  const isOrganizer = connectedAddress && connectedAddress.toLowerCase() === ORGANIZER_ADDRESS.toLowerCase();
+  // Note: Both addresses can see organizer controls, but only the primary organizer
+  // (set in contract deployment) can successfully execute contract transactions
+  const isOrganizer =
+    connectedAddress && ORGANIZER_ADDRESSES.map(addr => addr.toLowerCase()).includes(connectedAddress.toLowerCase());
   const canStartGame =
     bitcoinSupporters && ethereumSupporters && Number(bitcoinSupporters) > 0 && Number(ethereumSupporters) > 0;
   const currentPlayerTeam = playerTeam && Number(playerTeam) > 0 ? Number(playerTeam) - 1 : null;
@@ -451,7 +457,7 @@ export default function GamePage() {
         }
       `}</style>
 
-      <div className="h-screen racing-gradient p-2 md:p-4 relative overflow-hidden flex flex-col">
+      <div className="min-h-screen racing-gradient p-2 md:p-4 relative overflow-y-auto flex flex-col">
         {/* Racing background elements */}
         <div className="absolute inset-0 opacity-5">
           <div className="checkered-pattern w-full h-full"></div>

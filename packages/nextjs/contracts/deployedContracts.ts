@@ -722,7 +722,7 @@ const deployedContracts = {
   },
   31337: {
     Race: {
-      address: "0x0B306BF915C4d645ff596e518fAf3F9669b97016",
+      address: "0x59b670e9fA9D0A427751Af201D676719a970857b",
       abi: [
         {
           inputs: [
@@ -1288,10 +1288,10 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 512,
+      deployedOnBlock: 856,
     },
     YourContract: {
-      address: "0x9A676e781A523b5d0C0e43731313A708CB607508",
+      address: "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d",
       abi: [
         {
           inputs: [
@@ -1432,7 +1432,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 510,
+      deployedOnBlock: 854,
     },
   },
 } as const;
