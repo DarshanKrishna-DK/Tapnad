@@ -17,6 +17,33 @@
 
 ![Debug Contracts tab](https://github.com/scaffold-eth/scaffold-eth-2/assets/55535804/b237af0c-5027-4849-a5c1-2e31495cccb1)
 
+## 🏁 Tapnad - Multiplayer Coin Racing Game
+
+This dApp demonstrates a fun, interactive multiplayer game built on Monad testnet:
+
+### 🎮 Game Features
+- **Two-Coin Racing**: Players choose between Coin A (🟡) or Coin B (🔵)
+- **Collaborative Gameplay**: Multiple players can support the same coin
+- **Real-time Racing**: Live position updates on a circular track
+- **Smart Contract Logic**: Fair gameplay with 50ms tap cooldown
+- **Competitive Analytics**: Detailed race statistics and performance tracking
+
+### 🛣️ Game Flow
+1. **Home** (`/`): Welcome screen with game overview and "Go To Game" button
+2. **Game** (`/game`): Team selection, player lists, and live racing in one interface
+3. **Real-time Racing**: Countdown timer, tap mechanics, and live position updates
+
+### 🚀 Smart Contract
+- **Race.sol**: Bitcoin vs Ethereum racing game contract
+- **Monad Testnet**: Deployed on Monad's high-performance blockchain
+- **Events**: Real-time game updates via contract events
+- **Demo Ready**: Organizer-controlled game start for presentations
+
+### 🎯 Demo Instructions
+1. **Set Organizer Address**: Update `ORGANIZER_ADDRESS` in `/app/game/page.tsx` with your wallet address
+2. **Present Flow**: Home → "Go To Game" → Team Selection → Start Race → Live Racing
+3. **Mobile Friendly**: Optimized for mobile device demos
+
 ## Requirements
 
 Before you begin, you need to install the following tools:

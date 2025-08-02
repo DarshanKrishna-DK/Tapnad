@@ -1,71 +1,80 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { NextPage } from "next";
-import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { Address } from "~~/components/scaffold-eth";
 
 const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
+  const router = useRouter();
 
   return (
-    <>
-      <div className="flex items-center flex-col grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address address={connectedAddress} />
-          </div>
-
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
+    <div className="min-h-screen bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 flex flex-col items-center justify-center px-4">
+      <div className="text-center max-w-4xl mx-auto">
+        {/* Hero Section */}
+        <div className="mb-12">
+          <div className="text-8xl md:text-9xl mb-6">🏁</div>
+          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 drop-shadow-lg">TAPNAD</h1>
+          <p className="text-xl md:text-2xl text-white/90 mb-8 font-medium drop-shadow">
+            The Ultimate Crypto Racing Showdown
           </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
+          <p className="text-lg md:text-xl text-white/80 max-w-2xl mx-auto mb-12 drop-shadow">
+            Bitcoin vs Ethereum - Choose your side, tap to victory!
+            <br />
+            Fast-paced, multiplayer blockchain racing game.
           </p>
         </div>
 
-        <div className="grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col md:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
+        {/* Game Preview */}
+        <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-8 mb-12 border border-white/20">
+          <div className="grid md:grid-cols-2 gap-8 items-center">
+            <div className="text-center">
+              <div className="text-6xl mb-4">₿</div>
+              <h3 className="text-2xl font-bold text-yellow-300 mb-2">Team Bitcoin</h3>
+              <p className="text-white/80">The Original Cryptocurrency</p>
             </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
+            <div className="text-center">
+              <div className="text-6xl mb-4">Ξ</div>
+              <h3 className="text-2xl font-bold text-blue-300 mb-2">Team Ethereum</h3>
+              <p className="text-white/80">Smart Contract Pioneer</p>
             </div>
+          </div>
+        </div>
+
+        {/* Call to Action */}
+        <div className="space-y-6">
+          <button
+            onClick={() => router.push("/game")}
+            className="bg-white text-gray-800 hover:bg-gray-100 font-bold py-6 px-12 rounded-2xl text-2xl md:text-3xl transition-all duration-300 transform hover:scale-105 shadow-2xl"
+          >
+            🎮 GO TO GAME
+          </button>
+
+          <div className="text-center">
+            <p className="text-white/70 text-sm md:text-base">
+              No wallet required to spectate • Connect wallet to play • Joining teams is FREE
+            </p>
+          </div>
+        </div>
+
+        {/* Game Rules */}
+        <div className="mt-16 grid md:grid-cols-3 gap-6">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+            <div className="text-3xl mb-3">👥</div>
+            <h4 className="text-lg font-bold text-white mb-2">Choose Team</h4>
+            <p className="text-white/80 text-sm">Pick Bitcoin or Ethereum</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+            <div className="text-3xl mb-3">⚡</div>
+            <h4 className="text-lg font-bold text-white mb-2">Tap to Race</h4>
+            <p className="text-white/80 text-sm">Rapid taps advance your coin</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
+            <div className="text-3xl mb-3">🏆</div>
+            <h4 className="text-lg font-bold text-white mb-2">Team Victory</h4>
+            <p className="text-white/80 text-sm">First to complete 3 laps wins</p>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

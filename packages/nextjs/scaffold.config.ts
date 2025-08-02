@@ -1,5 +1,41 @@
 import * as chains from "viem/chains";
 
+// Define Monad testnet (ready for production deployment)
+// Uncomment the line below to enable Monad testnet
+// const monadTestnet = {
+//   id: 10143,
+//   name: "Monad Testnet",
+//   nativeCurrency: {
+//     decimals: 18,
+//     name: "MON",
+//     symbol: "MON",
+//   },
+//   rpcUrls: {
+//     default: {
+//       http: ["https://testnet-rpc.monad.xyz"],
+//       webSocket: ["wss://testnet-rpc.monad.xyz/ws"],
+//     },
+//     public: {
+//       http: ["https://testnet-rpc.monad.xyz"],
+//       webSocket: ["wss://testnet-rpc.monad.xyz/ws"],
+//     },
+//   },
+//   blockExplorers: {
+//     default: {
+//       name: "Monad Explorer",
+//       url: "https://testnet.monadexplorer.com",
+//       apiUrl: "https://testnet.monadexplorer.com/api",
+//     },
+//   },
+//   testnet: true,
+//   contracts: {
+//     multicall3: {
+//       address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+//       blockCreated: 1,
+//     },
+//   },
+// } as const satisfies chains.Chain;
+
 export type BaseConfig = {
   targetNetworks: readonly chains.Chain[];
   pollingInterval: number;
@@ -26,8 +62,8 @@ const scaffoldConfig = {
   // If you want to use a different RPC for a specific network, you can add it here.
   // The key is the chain ID, and the value is the HTTP RPC URL
   rpcOverrides: {
-    // Example:
-    // [chains.mainnet.id]: "https://mainnet.buidlguidl.com",
+    // Example: Monad Testnet RPC (uncomment to use)
+    // [10143]: "https://testnet-rpc.monad.xyz",
   },
   // This is ours WalletConnect's default project ID.
   // You can get your own at https://cloud.walletconnect.com
