@@ -10,6 +10,7 @@ import {
   useScaffoldWriteContract,
 } from "~~/hooks/scaffold-eth";
 import { notification } from "~~/utils/scaffold-eth";
+import { type RaceData, getRaceWebSocket } from "~~/utils/websocket";
 
 // 🚨 IMPORTANT: Demo organizer addresses (both can control the game)
 const ORGANIZER_ADDRESSES = [
@@ -49,7 +50,8 @@ export default function GamePage() {
     }
     return 0;
   });
-  // No batch submission needed - pure local gameplay!
+  // WebSocket connection status for multiplayer sync
+  const [isMultiplayerConnected, setIsMultiplayerConnected] = useState(false);
 
   // Read blockchain game state to sync with local gamePhase
   const { data: blockchainGameState } = useScaffoldReadContract({
@@ -241,26 +243,52 @@ export default function GamePage() {
     }
   }, [localPlayerTaps]);
 
-  // Real-time sync across multiple browsers/devices using localStorage events
+  // Real-time multiplayer sync using WebSocket + localStorage fallback
   useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "tapnad-local-taps" && e.newValue) {
-        try {
-          const remoteTaps = JSON.parse(e.newValue);
-          // Sync with remote state if it's more advanced
-          setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
-            bitcoin: Math.max(prev.bitcoin, remoteTaps.bitcoin || 0),
-            ethereum: Math.max(prev.ethereum, remoteTaps.ethereum || 0),
-          }));
-        } catch (error) {
-          console.error("Error syncing remote taps:", error);
-        }
-      }
-    };
+    let raceWS: ReturnType<typeof getRaceWebSocket> | null = null;
 
     if (typeof window !== "undefined") {
+      // Initialize WebSocket for real-time multiplayer sync
+      raceWS = getRaceWebSocket();
+
+      // Handle incoming race data from other players
+      raceWS.onData((data: RaceData) => {
+        setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
+          bitcoin: Math.max(prev.bitcoin, data.bitcoin),
+          ethereum: Math.max(prev.ethereum, data.ethereum),
+        }));
+      });
+
+      // Monitor connection status
+      const checkConnection = () => {
+        setIsMultiplayerConnected(raceWS?.getConnectionStatus() || false);
+      };
+
+      checkConnection();
+      const connectionInterval = setInterval(checkConnection, 2000);
+
+      // Fallback: localStorage sync for same-device tabs
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === "tapnad-local-taps" && e.newValue) {
+          try {
+            const remoteTaps = JSON.parse(e.newValue);
+            setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
+              bitcoin: Math.max(prev.bitcoin, remoteTaps.bitcoin || 0),
+              ethereum: Math.max(prev.ethereum, remoteTaps.ethereum || 0),
+            }));
+          } catch (error) {
+            console.error("Error syncing remote taps:", error);
+          }
+        }
+      };
+
       window.addEventListener("storage", handleStorageChange);
-      return () => window.removeEventListener("storage", handleStorageChange);
+
+      return () => {
+        window.removeEventListener("storage", handleStorageChange);
+        clearInterval(connectionInterval);
+        raceWS?.disconnect();
+      };
     }
   }, []);
 
@@ -435,6 +463,12 @@ export default function GamePage() {
             notification.info("🔄 Ready for next race! Join your teams!");
           }, 5000);
         }, 100);
+      }
+
+      // Broadcast to other players via WebSocket
+      if (typeof window !== "undefined") {
+        const raceWS = getRaceWebSocket();
+        raceWS.sendRaceData(newTaps.bitcoin, newTaps.ethereum);
       }
 
       return newTaps;
@@ -1027,6 +1061,16 @@ export default function GamePage() {
                         <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 p-2 rounded-lg border border-green-400/30">
                           <p className="text-green-300 text-xs font-bold text-center">🚀 PURE SPEED RACING 🚀</p>
                           <p className="text-purple-300 text-xs text-center">No transactions! Just pure speed!</p>
+                          <div className="flex justify-center items-center gap-1 mt-1">
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                isMultiplayerConnected ? "bg-green-400 animate-pulse" : "bg-gray-500"
+                              }`}
+                            ></div>
+                            <span className={`text-xs ${isMultiplayerConnected ? "text-green-300" : "text-gray-400"}`}>
+                              {isMultiplayerConnected ? "Multiplayer ON" : "Single Player"}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
