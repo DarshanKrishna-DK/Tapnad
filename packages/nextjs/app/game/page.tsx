@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
 import { useAccount } from "wagmi";
 import { Address } from "~~/components/scaffold-eth";
 import {
@@ -30,15 +31,12 @@ export default function GamePage() {
 
   // Game flow control - overrides blockchain state for better UX
   const [gamePhase, setGamePhase] = useState<"teamSelection" | "racing" | "results">("teamSelection");
-  const [winner, setWinner] = useState<{ coinId: number; name: string } | null>(null);
-  const [raceResults, setRaceResults] = useState<{
-    duration: number;
-    bitcoinTaps: number;
-    ethereumTaps: number;
-    totalPlayers: number;
-  } | null>(null);
 
-  // Note: We use local gamePhase state instead of blockchain gameState for better UX flow
+  // Read blockchain game state to sync with local gamePhase
+  const { data: blockchainGameState } = useScaffoldReadContract({
+    contractName: "Race",
+    functionName: "gameState",
+  });
 
   const { data: bitcoinSupporters } = useScaffoldReadContract({
     contractName: "Race",
@@ -111,6 +109,33 @@ export default function GamePage() {
     contractName: "Race",
   });
 
+  // Custom tap function that suppresses success notifications
+  const customTapAsync = async () => {
+    // Store the original notification function temporarily
+    const originalSuccess = notification.success;
+
+    // Temporarily disable success notifications
+    (notification as any).success = () => "";
+
+    try {
+      const result = await writeRaceAsync({
+        functionName: "tap",
+      });
+
+      // Add a small delay then dismiss any lingering notifications
+      setTimeout(() => {
+        toast.dismiss();
+      }, 100);
+
+      return result;
+    } finally {
+      // Restore original notification function after a delay
+      setTimeout(() => {
+        (notification as any).success = originalSuccess;
+      }, 200);
+    }
+  };
+
   // Watch for game events and manage UI flow
   useScaffoldWatchContractEvent({
     contractName: "Race",
@@ -146,17 +171,18 @@ export default function GamePage() {
         const winnerName = winnerCoinId === 0 ? "Bitcoin" : "Ethereum";
 
         // Capture race results
-        setWinner({ coinId: winnerCoinId, name: winnerName });
-        setRaceResults({
+        const results = {
           duration: Number(log.args.duration) || 0,
           bitcoinTaps: Number(bitcoinTotalTaps) || 0,
           ethereumTaps: Number(ethereumTotalTaps) || 0,
           totalPlayers: (Number(bitcoinSupporters) || 0) + (Number(ethereumSupporters) || 0),
-        });
+          winnerCoinId,
+          winnerName,
+        };
 
-        // Transition to results page
-        setGamePhase("results");
-        setCountdown(null);
+        // Store results in localStorage and redirect to results page
+        localStorage.setItem("raceResults", JSON.stringify(results));
+        router.push("/results");
       });
     },
   });
@@ -167,12 +193,31 @@ export default function GamePage() {
     onLogs: () => {
       // Reset to team selection phase
       setGamePhase("teamSelection");
-      setWinner(null);
-      setRaceResults(null);
       setCountdown(null);
       notification.info("🔄 Ready for new race! Join your team again.");
     },
   });
+
+  // Sync local gamePhase with blockchain state on load
+  useEffect(() => {
+    if (blockchainGameState !== undefined) {
+      const state = Number(blockchainGameState);
+      if (state === 0) {
+        // Lobby state - always show team selection
+        setGamePhase("teamSelection");
+      } else if (state === 1) {
+        // InProgress state - show racing only if user has joined a team
+        // If user hasn't joined, keep showing team selection
+        if (hasJoined) {
+          setGamePhase("racing");
+        } else {
+          setGamePhase("teamSelection");
+        }
+      } else if (state === 2) {
+        // Finished state - might auto-reset to lobby, but we'll let events handle this
+      }
+    }
+  }, [blockchainGameState, hasJoined]);
 
   // Track tapping activity for UX feedback
   useEffect(() => {
@@ -201,31 +246,47 @@ export default function GamePage() {
   // Game flow helpers - use our local state for better UX
   const isTeamSelection = gamePhase === "teamSelection";
   const isRacing = gamePhase === "racing";
-  const isResults = gamePhase === "results";
 
   // Note: We override blockchain state with local gamePhase for better UX flow
 
-  // Calculate coin positions
-  const calculateCoinPosition = (lap: number, position: number): CoinPosition => {
+  // Calculate coin positions on circular track
+  const calculateCoinPosition = (lap: number, position: number, coinId: number): CoinPosition => {
     const totalProgress = lap * 100 + position;
     const angle = (totalProgress / 100) * 2 * Math.PI - Math.PI / 2;
-    const radius = isRacing ? 120 : 80;
-    const centerX = isRacing ? 180 : 120;
-    const centerY = isRacing ? 180 : 120;
+
+    // Base radius and center for the circular track
+    const baseRadius = isRacing ? 160 : 105;
+    const centerX = isRacing ? 300 : 200;
+    const centerY = isRacing ? 200 : 150;
+
+    // Lane offset for side-by-side positioning
+    const laneOffset = isRacing ? 12 : 8;
+    let radius = baseRadius;
+
+    if (coinId === 0) {
+      // Bitcoin - inner lane
+      radius = baseRadius - laneOffset;
+    } else {
+      // Ethereum - outer lane
+      radius = baseRadius + laneOffset;
+    }
+
+    const x = centerX + radius * Math.cos(angle);
+    const y = centerY + radius * Math.sin(angle);
 
     return {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle),
-      angle: angle + Math.PI / 2,
+      x,
+      y,
+      angle: angle + Math.PI / 2, // Car rotation to follow track direction
     };
   };
 
   const bitcoinPosition = bitcoinProgress
-    ? calculateCoinPosition(Number(bitcoinProgress[0]), Number(bitcoinProgress[1]))
-    : { x: 120, y: 40, angle: 0 };
+    ? calculateCoinPosition(Number(bitcoinProgress[0]), Number(bitcoinProgress[1]), 0)
+    : { x: isRacing ? 300 : 200, y: isRacing ? 40 : 45, angle: 0 }; // Bitcoin inner lane start
   const ethereumPosition = ethereumProgress
-    ? calculateCoinPosition(Number(ethereumProgress[0]), Number(ethereumProgress[1]))
-    : { x: 120, y: 40, angle: 0 };
+    ? calculateCoinPosition(Number(ethereumProgress[0]), Number(ethereumProgress[1]), 1)
+    : { x: isRacing ? 300 : 200, y: isRacing ? 28 : 37, angle: 0 }; // Ethereum outer lane start
 
   // Team selection function
   const joinTeam = async (teamId: 0 | 1) => {
@@ -274,472 +335,669 @@ export default function GamePage() {
     }
   };
 
-  // Tap function - pure speed contest!
+  // Tap function - with cooldown to slow down movement
   const handleTap = async () => {
     if (!connectedAddress || !hasJoined) {
       notification.error("Please join a team first");
       return;
     }
 
-    // No cooldown - tap as fast as you can!
+    // Add cooldown to slow down the race (500ms between taps)
+    const now = Date.now();
+    if (lastTapTime && now - lastTapTime < 500) {
+      return; // Still in cooldown
+    }
+
     try {
       setIsTapping(true);
-      setLastTapTime(Date.now());
-      await writeRaceAsync({
-        functionName: "tap",
-      });
-      // No success notification - keep it fast and clean!
+      setLastTapTime(now);
+
+      // Execute tap transaction with suppressed notifications
+      await customTapAsync();
     } catch (error) {
       console.error("Error tapping:", error);
       // Note: ETH deduction is just gas fees for blockchain transactions
       notification.error("Tap failed - ensure you have test ETH for gas fees");
     } finally {
-      setIsTapping(false);
+      // Add a small delay before allowing next tap
+      setTimeout(() => {
+        setIsTapping(false);
+      }, 300);
     }
   };
 
-  // Mobile responsive classes
-  const trackSize = isRacing ? "w-80 h-80 md:w-96 md:h-96" : "w-60 h-60 md:w-72 md:h-72";
-  const viewBox = isRacing ? "0 0 360 360" : "0 0 240 240";
+  // Mobile responsive classes for much wider track
+  const trackSize = isRacing ? "w-full h-80 md:h-96 lg:h-[500px]" : "w-full h-64 md:h-80";
+  const viewBox = isRacing ? "0 0 600 400" : "0 0 400 300";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-2 md:p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-4 md:mb-8">
-          <h1 className="text-3xl md:text-5xl font-bold text-white mb-2">🏁 TAPNAD</h1>
-          <p className="text-lg md:text-xl text-white/80">Bitcoin vs Ethereum Racing</p>
-          {isRacing && (
-            <div className="mt-2">
-              <span className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                🏁 RACE IN PROGRESS
-              </span>
-            </div>
-          )}
+    <>
+      {/* Custom CSS for animations */}
+      <style jsx>{`
+        .animation-delay-100 {
+          animation-delay: 0.1s;
+        }
+        .animation-delay-300 {
+          animation-delay: 0.3s;
+        }
+        .animation-delay-500 {
+          animation-delay: 0.5s;
+        }
+        .animation-delay-700 {
+          animation-delay: 0.7s;
+        }
+        .animation-delay-900 {
+          animation-delay: 0.9s;
+        }
+
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fade-in 1s ease-out;
+        }
+
+        @keyframes racing-zoom {
+          0%,
+          100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.1);
+          }
+        }
+
+        @keyframes tire-spin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+
+        @keyframes nitro-boost {
+          0%,
+          100% {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow:
+              0 0 40px rgba(139, 92, 246, 1),
+              0 0 60px rgba(168, 85, 247, 0.8);
+            transform: scale(1.05);
+          }
+        }
+
+        .racing-zoom {
+          animation: racing-zoom 1.5s ease-in-out infinite;
+        }
+
+        .tire-spin {
+          animation: tire-spin 2s linear infinite;
+        }
+
+        .nitro-boost {
+          animation: nitro-boost 1s ease-in-out infinite;
+        }
+      `}</style>
+
+      <div className="h-screen racing-gradient p-2 md:p-4 relative overflow-hidden flex flex-col">
+        {/* Racing background elements */}
+        <div className="absolute inset-0 opacity-5">
+          <div className="checkered-pattern w-full h-full"></div>
         </div>
 
-        <div className={`${isRacing ? "block" : "lg:grid lg:grid-cols-3"} gap-6`}>
-          {/* Race Track */}
-          <div className={`${isRacing ? "mb-6" : "lg:col-span-2 mb-6 lg:mb-0"}`}>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-6 border border-white/20">
-              <div className="flex justify-center relative">
-                <svg className={trackSize} viewBox={viewBox}>
-                  {/* Track */}
-                  <circle
-                    cx={isRacing ? "180" : "120"}
-                    cy={isRacing ? "180" : "120"}
-                    r={isRacing ? "120" : "80"}
-                    fill="none"
-                    stroke="#ffffff"
-                    strokeWidth="3"
-                    strokeDasharray="8,4"
-                    opacity="0.6"
-                  />
+        <div className="max-w-6xl mx-auto relative z-10 flex-1 flex flex-col">
+          {/* Header */}
+          <div className="text-center mb-2 md:mb-4">
+            <h1 className="text-2xl md:text-3xl font-bold text-white mb-1 tracking-wider drop-shadow-2xl">
+              TAPNAD RACING
+            </h1>
+            <p className="text-sm md:text-base text-purple-200 font-semibold">Bitcoin vs Ethereum Championship</p>
+            {isRacing && (
+              <div className="mt-1">
+                <span className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-3 py-1 rounded-full text-xs font-bold border border-white/30">
+                  RACE IN PROGRESS
+                </span>
+              </div>
+            )}
+          </div>
 
-                  {/* Start/Finish Line */}
-                  <line
-                    x1={isRacing ? "180" : "120"}
-                    y1={isRacing ? "50" : "35"}
-                    x2={isRacing ? "180" : "120"}
-                    y2={isRacing ? "80" : "55"}
-                    stroke="#ef4444"
-                    strokeWidth="4"
-                  />
+          <div className={`${isRacing ? "flex flex-col lg:flex-row gap-4" : "lg:grid lg:grid-cols-3"} gap-6 flex-1`}>
+            {/* Race Track */}
+            <div className={`${isRacing ? "flex-1 mb-4" : "lg:col-span-2 mb-6 lg:mb-0"}`}>
+              <div className="bg-black/40 backdrop-blur-sm rounded-xl md:rounded-2xl p-2 md:p-4 border-2 border-purple-400/50 shadow-2xl racing-track">
+                <div className="flex justify-center relative">
+                  <svg className={trackSize} viewBox={viewBox} preserveAspectRatio="xMidYMid meet">
+                    {/* Track Background */}
+                    <rect width="100%" height="100%" fill="#0f172a" />
 
-                  {/* Bitcoin */}
-                  <g transform={`translate(${bitcoinPosition.x}, ${bitcoinPosition.y})`}>
-                    <circle r={isRacing ? "16" : "12"} fill="#f7931a" stroke="#ffffff" strokeWidth="2" />
-                    <text
-                      y="5"
-                      textAnchor="middle"
-                      className={`${isRacing ? "text-sm" : "text-xs"} font-bold fill-white`}
-                    >
-                      ₿
-                    </text>
-                  </g>
+                    {/* Track Background (Asphalt) */}
+                    <circle
+                      cx={isRacing ? 300 : 200}
+                      cy={isRacing ? 200 : 150}
+                      r={isRacing ? 180 : 120}
+                      fill="#1f2937"
+                      stroke="#374151"
+                      strokeWidth="3"
+                    />
 
-                  {/* Ethereum */}
-                  <g transform={`translate(${ethereumPosition.x}, ${ethereumPosition.y})`}>
-                    <circle r={isRacing ? "16" : "12"} fill="#627eea" stroke="#ffffff" strokeWidth="2" />
-                    <text
-                      y="6"
-                      textAnchor="middle"
-                      className={`${isRacing ? "text-sm" : "text-xs"} font-bold fill-white`}
-                    >
-                      Ξ
-                    </text>
-                  </g>
+                    {/* Outer Track Barrier */}
+                    <circle
+                      cx={isRacing ? 300 : 200}
+                      cy={isRacing ? 200 : 150}
+                      r={isRacing ? 180 : 120}
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="4"
+                      strokeDasharray="15,8"
+                      opacity="0.8"
+                    />
 
-                  {/* Countdown Timer */}
-                  {countdown !== null && (
+                    {/* Main Racing Track */}
+                    <circle
+                      cx={isRacing ? 300 : 200}
+                      cy={isRacing ? 200 : 150}
+                      r={isRacing ? 160 : 105}
+                      fill="none"
+                      stroke="#6b7280"
+                      strokeWidth={isRacing ? "40" : "30"}
+                      opacity="0.9"
+                    />
+
+                    {/* Track Center Line */}
+                    <circle
+                      cx={isRacing ? 300 : 200}
+                      cy={isRacing ? 200 : 150}
+                      r={isRacing ? 160 : 105}
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth="3"
+                      strokeDasharray="20,15"
+                      opacity="0.8"
+                    />
+
+                    {/* Inner Track Barrier */}
+                    <circle
+                      cx={isRacing ? 300 : 200}
+                      cy={isRacing ? 200 : 150}
+                      r={isRacing ? 140 : 90}
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="4"
+                      strokeDasharray="15,8"
+                      opacity="0.8"
+                    />
+
+                    {/* Start/Finish Line - Checkered Pattern */}
                     <g>
-                      <circle
-                        cx={isRacing ? "180" : "120"}
-                        cy={isRacing ? "180" : "120"}
-                        r="40"
-                        fill="rgba(0,0,0,0.8)"
+                      {/* White base */}
+                      <rect x={isRacing ? 295 : 195} y={isRacing ? 20 : 30} width="10" height="40" fill="#ffffff" />
+                      {/* Black squares for checkered pattern */}
+                      <rect x={isRacing ? 295 : 195} y={isRacing ? 20 : 30} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 300 : 200} y={isRacing ? 25 : 35} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 295 : 195} y={isRacing ? 30 : 40} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 300 : 200} y={isRacing ? 35 : 45} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 295 : 195} y={isRacing ? 40 : 50} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 300 : 200} y={isRacing ? 45 : 55} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 295 : 195} y={isRacing ? 50 : 60} width="5" height="5" fill="#000000" />
+                      <rect x={isRacing ? 300 : 200} y={isRacing ? 55 : 65} width="5" height="5" fill="#000000" />
+                    </g>
+
+                    {/* Racing Markers */}
+                    <g opacity="0.6">
+                      {/* Quarter markers */}
+                      <circle cx={isRacing ? 460 : 305} cy={isRacing ? 200 : 150} r="4" fill="#fbbf24" />
+                      <circle cx={isRacing ? 300 : 200} cy={isRacing ? 360 : 270} r="4" fill="#fbbf24" />
+                      <circle cx={isRacing ? 140 : 95} cy={isRacing ? 200 : 150} r="4" fill="#fbbf24" />
+                    </g>
+
+                    {/* Bitcoin Racing Car */}
+                    <g
+                      transform={`translate(${bitcoinPosition.x}, ${bitcoinPosition.y}) rotate(${(bitcoinPosition.angle * 180) / Math.PI})`}
+                    >
+                      {/* Car Body */}
+                      <ellipse
+                        rx={isRacing ? "18" : "14"}
+                        ry={isRacing ? "8" : "6"}
+                        fill="#f7931a"
                         stroke="#ffffff"
                         strokeWidth="2"
                       />
+                      {/* Car Details */}
+                      <rect
+                        x={isRacing ? "-12" : "-9"}
+                        y={isRacing ? "-3" : "-2"}
+                        width={isRacing ? "24" : "18"}
+                        height={isRacing ? "6" : "4"}
+                        fill="#ff8c00"
+                        rx="2"
+                      />
+                      {/* Windshield */}
+                      <ellipse rx={isRacing ? "8" : "6"} ry={isRacing ? "4" : "3"} fill="#87ceeb" opacity="0.7" />
+                      {/* Bitcoin Symbol */}
                       <text
-                        x={isRacing ? "180" : "120"}
-                        y={isRacing ? "190" : "130"}
+                        y="3"
                         textAnchor="middle"
-                        className="text-2xl md:text-3xl font-bold fill-white"
+                        className={`${isRacing ? "text-xs" : "text-[8px]"} font-bold fill-white`}
                       >
-                        {countdown === 0 ? "TAP!" : countdown}
+                        ₿
                       </text>
+                      {/* Racing Stripes */}
+                      <line
+                        x1={isRacing ? "-15" : "-12"}
+                        y1="0"
+                        x2={isRacing ? "15" : "12"}
+                        y2="0"
+                        stroke="#ffffff"
+                        strokeWidth="1"
+                        opacity="0.8"
+                      />
                     </g>
-                  )}
-                </svg>
-              </div>
 
-              {/* Lap Progress (only during race) */}
-              {isRacing && (
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <div className="text-yellow-400 font-bold text-sm md:text-base">₿ Bitcoin</div>
-                    <div className="text-white/70 text-xs md:text-sm">
-                      Lap {bitcoinProgress ? (Number(bitcoinProgress[0]) + 1).toString() : "1"} / 3
+                    {/* Ethereum Racing Car */}
+                    <g
+                      transform={`translate(${ethereumPosition.x}, ${ethereumPosition.y}) rotate(${(ethereumPosition.angle * 180) / Math.PI})`}
+                    >
+                      {/* Car Body */}
+                      <ellipse
+                        rx={isRacing ? "18" : "14"}
+                        ry={isRacing ? "8" : "6"}
+                        fill="#627eea"
+                        stroke="#ffffff"
+                        strokeWidth="2"
+                      />
+                      {/* Car Details */}
+                      <rect
+                        x={isRacing ? "-12" : "-9"}
+                        y={isRacing ? "-3" : "-2"}
+                        width={isRacing ? "24" : "18"}
+                        height={isRacing ? "6" : "4"}
+                        fill="#4169e1"
+                        rx="2"
+                      />
+                      {/* Windshield */}
+                      <ellipse rx={isRacing ? "8" : "6"} ry={isRacing ? "4" : "3"} fill="#87ceeb" opacity="0.7" />
+                      {/* Ethereum Symbol */}
+                      <text
+                        y="4"
+                        textAnchor="middle"
+                        className={`${isRacing ? "text-xs" : "text-[8px]"} font-bold fill-white`}
+                      >
+                        Ξ
+                      </text>
+                      {/* Racing Stripes */}
+                      <line
+                        x1={isRacing ? "-15" : "-12"}
+                        y1="0"
+                        x2={isRacing ? "15" : "12"}
+                        y2="0"
+                        stroke="#ffffff"
+                        strokeWidth="1"
+                        opacity="0.8"
+                      />
+                    </g>
+
+                    {/* Racing Countdown Timer */}
+                    {countdown !== null && (
+                      <g>
+                        {/* Countdown Background */}
+                        <circle
+                          cx={isRacing ? "180" : "120"}
+                          cy={isRacing ? "180" : "120"}
+                          r="50"
+                          fill="rgba(0,0,0,0.9)"
+                          stroke="#8b5cf6"
+                          strokeWidth="4"
+                        />
+                        {/* Racing stripes around countdown */}
+                        <circle
+                          cx={isRacing ? "180" : "120"}
+                          cy={isRacing ? "180" : "120"}
+                          r="45"
+                          fill="none"
+                          stroke="#fbbf24"
+                          strokeWidth="2"
+                          strokeDasharray="5,5"
+                        />
+                        {/* Countdown Text */}
+                        <text
+                          x={isRacing ? "180" : "120"}
+                          y={isRacing ? "190" : "130"}
+                          textAnchor="middle"
+                          className="text-2xl md:text-3xl font-bold fill-white"
+                        >
+                          {countdown === 0 ? "🏁 GO!" : `${countdown}`}
+                        </text>
+                        {/* Racing flag emoji for GO */}
+                        {countdown === 0 && (
+                          <text
+                            x={isRacing ? "180" : "120"}
+                            y={isRacing ? "170" : "110"}
+                            textAnchor="middle"
+                            className="text-lg font-bold fill-yellow-400"
+                          >
+                            🏁
+                          </text>
+                        )}
+                      </g>
+                    )}
+                  </svg>
+                </div>
+
+                {/* Lap Progress (only during race) */}
+                {isRacing && (
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div className="text-center bg-black/30 rounded-lg p-3 border border-yellow-400/30">
+                      <div className="text-yellow-400 font-bold text-sm md:text-base flex items-center justify-center gap-2">
+                        🏎️ ₿ Bitcoin Racer
+                      </div>
+                      <div className="text-yellow-200/80 text-xs md:text-sm font-semibold">
+                        Lap {bitcoinProgress ? (Number(bitcoinProgress[0]) + 1).toString() : "1"} / 3
+                      </div>
+                      <div className="w-full bg-gray-800 rounded-full h-3 mt-2 border border-yellow-400/50">
+                        <div
+                          className="bg-gradient-to-r from-yellow-400 to-orange-500 h-3 rounded-full transition-all duration-300 racing-pulse"
+                          style={{ width: `${bitcoinProgress ? Number(bitcoinProgress[1]) : 0}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-yellow-300 mt-1">
+                        {bitcoinProgress ? Number(bitcoinProgress[1]) : 0}% Complete
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-700 rounded-full h-2 mt-1">
-                      <div
-                        className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${bitcoinProgress ? Number(bitcoinProgress[1]) : 0}%` }}
-                      ></div>
+                    <div className="text-center bg-black/30 rounded-lg p-3 border border-blue-400/30">
+                      <div className="text-blue-400 font-bold text-sm md:text-base flex items-center justify-center gap-2">
+                        🏎️ Ξ Ethereum Racer
+                      </div>
+                      <div className="text-blue-200/80 text-xs md:text-sm font-semibold">
+                        Lap {ethereumProgress ? (Number(ethereumProgress[0]) + 1).toString() : "1"} / 3
+                      </div>
+                      <div className="w-full bg-gray-800 rounded-full h-3 mt-2 border border-blue-400/50">
+                        <div
+                          className="bg-gradient-to-r from-blue-400 to-cyan-500 h-3 rounded-full transition-all duration-300 racing-pulse"
+                          style={{ width: `${ethereumProgress ? Number(ethereumProgress[1]) : 0}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-blue-300 mt-1">
+                        {ethereumProgress ? Number(ethereumProgress[1]) : 0}% Complete
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-blue-400 font-bold text-sm md:text-base">Ξ Ethereum</div>
-                    <div className="text-white/70 text-xs md:text-sm">
-                      Lap {ethereumProgress ? (Number(ethereumProgress[0]) + 1).toString() : "1"} / 3
+                )}
+              </div>
+            </div>
+
+            {/* Team Selection & Controls */}
+            {isTeamSelection && (
+              <div className="space-y-4 md:space-y-6">
+                {/* Team Selection */}
+                <div className="bg-black/40 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-6 border-2 border-purple-400/50 shadow-2xl">
+                  <h3 className="text-xl md:text-2xl font-bold text-white mb-4 text-center">Choose Your Racing Team</h3>
+                  <p className="text-center text-green-400 text-sm mb-4 font-semibold bg-black/30 rounded-lg p-2 border border-green-400/30">
+                    FREE to join • No payment required • Pure racing skill
+                  </p>
+
+                  {/* Bitcoin Racing Team */}
+                  <div
+                    className={`p-3 md:p-4 rounded-lg mb-4 border-2 transition-all transform hover:scale-105 ${
+                      currentPlayerTeam === 0
+                        ? "border-yellow-500 bg-gradient-to-br from-yellow-500/30 to-orange-500/20 racing-pulse"
+                        : "border-yellow-400/30 hover:border-yellow-400/70 bg-black/20"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2 md:space-x-3">
+                        <span className="text-2xl md:text-3xl">₿</span>
+                        <div>
+                          <h4 className="text-lg md:text-xl font-bold text-yellow-400">Bitcoin Racing Team</h4>
+                          <p className="text-xs md:text-sm text-yellow-200/80 font-semibold">
+                            The Original Speed Demon
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg md:text-xl font-bold text-white">
+                          {bitcoinSupporters?.toString() || "0"}
+                        </div>
+                        <div className="text-xs text-yellow-300/70 font-semibold">racers</div>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-700 rounded-full h-2 mt-1">
-                      <div
-                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${ethereumProgress ? Number(ethereumProgress[1]) : 0}%` }}
-                      ></div>
+                    {!hasJoined && (
+                      <button
+                        onClick={() => joinTeam(0)}
+                        disabled={isJoining}
+                        className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-black font-bold py-2 md:py-3 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-yellow-300/50"
+                      >
+                        {isJoining ? "Joining Race..." : "Join Bitcoin Racing Team"}
+                      </button>
+                    )}
+                    {currentPlayerTeam === 0 && (
+                      <div className="bg-gradient-to-r from-yellow-500/30 to-orange-500/20 text-yellow-300 py-2 px-3 rounded text-center font-bold text-sm border border-yellow-400/50">
+                        You&apos;re racing for Bitcoin!
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ethereum Racing Team */}
+                  <div
+                    className={`p-3 md:p-4 rounded-lg border-2 transition-all transform hover:scale-105 ${
+                      currentPlayerTeam === 1
+                        ? "border-blue-500 bg-gradient-to-br from-blue-500/30 to-cyan-500/20 racing-pulse"
+                        : "border-blue-400/30 hover:border-blue-400/70 bg-black/20"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2 md:space-x-3">
+                        <span className="text-2xl md:text-3xl">Ξ</span>
+                        <div>
+                          <h4 className="text-lg md:text-xl font-bold text-blue-400">Ethereum Racing Team</h4>
+                          <p className="text-xs md:text-sm text-blue-200/80 font-semibold">The Smart Racing Machine</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg md:text-xl font-bold text-white">
+                          {ethereumSupporters?.toString() || "0"}
+                        </div>
+                        <div className="text-xs text-blue-300/70 font-semibold">racers</div>
+                      </div>
+                    </div>
+                    {!hasJoined && (
+                      <button
+                        onClick={() => joinTeam(1)}
+                        disabled={isJoining}
+                        className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-2 md:py-3 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-blue-300/50"
+                      >
+                        {isJoining ? "Joining Race..." : "Join Ethereum Racing Team"}
+                      </button>
+                    )}
+                    {currentPlayerTeam === 1 && (
+                      <div className="bg-gradient-to-r from-blue-500/30 to-cyan-500/20 text-blue-300 py-2 px-3 rounded text-center font-bold text-sm border border-blue-400/50">
+                        You&apos;re racing for Ethereum!
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Racing Team Rosters */}
+                <div className="grid grid-cols-2 gap-2 md:gap-4">
+                  {/* Bitcoin Racing Team */}
+                  <div className="bg-black/30 backdrop-blur-sm rounded-lg p-3 md:p-4 border-2 border-yellow-400/30">
+                    <h4 className="text-sm md:text-base font-bold text-yellow-400 mb-2 flex items-center gap-2">
+                      ₿ Bitcoin Racers
+                    </h4>
+                    <div className="space-y-1 max-h-32 md:max-h-40 overflow-y-auto">
+                      {bitcoinSupportersList && bitcoinSupportersList.length > 0 ? (
+                        bitcoinSupportersList.map((supporter, index) => (
+                          <div key={index} className="text-xs text-yellow-200/90 bg-yellow-500/10 rounded p-1">
+                            <Address address={supporter} size="xs" />
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-yellow-300/50 italic">No racers yet - be the first!</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ethereum Racing Team */}
+                  <div className="bg-black/30 backdrop-blur-sm rounded-lg p-3 md:p-4 border-2 border-blue-400/30">
+                    <h4 className="text-sm md:text-base font-bold text-blue-400 mb-2 flex items-center gap-2">
+                      Ξ Ethereum Racers
+                    </h4>
+                    <div className="space-y-1 max-h-32 md:max-h-40 overflow-y-auto">
+                      {ethereumSupportersList && ethereumSupportersList.length > 0 ? (
+                        ethereumSupportersList.map((supporter, index) => (
+                          <div key={index} className="text-xs text-blue-200/90 bg-blue-500/10 rounded p-1">
+                            <Address address={supporter} size="xs" />
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-blue-300/50 italic">No racers yet - be the first!</p>
+                      )}
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
+
+                {/* Race Control Center (Organizer Only) */}
+                {isOrganizer && (
+                  <div className="bg-black/40 backdrop-blur-sm rounded-xl p-4 md:p-6 border-2 border-purple-400/50 shadow-2xl">
+                    <h4 className="text-lg font-bold text-purple-300 mb-4 text-center">Race Control Center</h4>
+                    <div className="space-y-3">
+                      <button
+                        onClick={startGame}
+                        disabled={!canStartGame || isStarting}
+                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 md:py-4 px-6 rounded-lg transition-all transform hover:scale-105 text-lg md:text-xl disabled:opacity-50 disabled:cursor-not-allowed border-2 border-green-400/50"
+                      >
+                        {isStarting
+                          ? "Starting Engines..."
+                          : canStartGame
+                            ? "START THE RACE"
+                            : "Need racers on both teams"}
+                      </button>
+                      <button
+                        onClick={resetGame}
+                        className="w-full bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all transform hover:scale-105 text-sm md:text-base border-2 border-red-400/50"
+                      >
+                        Reset Championship
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Racing Control Panel (During Race) */}
+            {isRacing && (
+              <div className="w-full lg:w-80 bg-black/40 backdrop-blur-sm rounded-xl p-4 border-2 border-purple-400/50 shadow-2xl">
+                <h3 className="text-lg font-bold text-white mb-4 text-center">
+                  {currentPlayerTeam !== null
+                    ? `${currentPlayerTeam === 0 ? "Bitcoin" : "Ethereum"} Racing Control`
+                    : "Spectator Mode"}
+                </h3>
+
+                {hasJoined && currentPlayerTeam !== null ? (
+                  <div className="space-y-4">
+                    {/* Circular Racing Accelerator Button */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={handleTap}
+                        disabled={isTapping || countdown !== null}
+                        className={`w-32 h-32 rounded-full font-bold text-lg transition-all active:scale-95 border-4 shadow-2xl ${
+                          currentPlayerTeam === 0
+                            ? "bg-gradient-to-br from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-black border-yellow-300"
+                            : "bg-gradient-to-br from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white border-blue-300"
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {countdown !== null ? "Wait..." : isTapping ? "TAPPING..." : "TAP TO ACCELERATE"}
+                      </button>
+                    </div>
+
+                    {/* Racing Dashboard */}
+                    <div className="bg-black/50 rounded-xl p-3 border border-purple-400/30">
+                      <div className="space-y-3">
+                        <div className="text-center">
+                          <p className="text-sm font-bold text-white">
+                            Your Taps: <span className="text-purple-300">{playerTaps?.toString() || "0"}</span>
+                          </p>
+                        </div>
+
+                        {/* Team Totals */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-yellow-500/20 rounded-lg p-2 border border-yellow-400/30">
+                            <div className="text-center">
+                              <span className="text-yellow-400 font-bold text-xs">₿ Bitcoin</span>
+                              <div className="text-white text-sm font-bold">{bitcoinTotalTaps?.toString() || "0"}</div>
+                            </div>
+                          </div>
+                          <div className="bg-blue-500/20 rounded-lg p-2 border border-blue-400/30">
+                            <div className="text-center">
+                              <span className="text-blue-400 font-bold text-xs">Ξ Ethereum</span>
+                              <div className="text-white text-sm font-bold">{ethereumTotalTaps?.toString() || "0"}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Racing Info */}
+                        <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 p-2 rounded-lg border border-green-400/30">
+                          <p className="text-green-300 text-xs font-bold text-center">HIGH-SPEED RACING</p>
+                          <p className="text-purple-300 text-xs text-center">Gas fees = Racing fuel</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center space-y-4">
+                    <div className="bg-black/50 rounded-xl p-6 border-2 border-purple-400/30">
+                      <p className="text-purple-200 text-lg font-bold mb-4">
+                        {!connectedAddress ? "Connect wallet to join the race!" : "Join a racing team to compete!"}
+                      </p>
+
+                      <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 p-4 rounded-lg border border-blue-400/30 mb-4">
+                        <p className="text-blue-300 text-sm font-semibold mb-2">Racing Championship Info:</p>
+                        <p className="text-purple-200/90 text-xs mb-2">
+                          Need test ETH? Use &quot;Burner Wallet&quot; (comes with free racing fuel) or ask the race
+                          organizer!
+                        </p>
+                        <p className="text-green-400 text-xs font-semibold">
+                          Joining racing teams is FREE - only gas fees for racing!
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => router.push("/")}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-6 rounded-lg text-sm md:text-base border-2 border-purple-400/50 transform hover:scale-105 transition-all"
+                      >
+                        Back to Racing Hub
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Team Selection & Controls */}
+          {/* Back Button (only in team selection) */}
           {isTeamSelection && (
-            <div className="space-y-4 md:space-y-6">
-              {/* Team Selection */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-6 border border-white/20">
-                <h3 className="text-xl md:text-2xl font-bold text-white mb-4 text-center">Choose Your Team</h3>
-                <p className="text-center text-green-400 text-sm mb-4 font-semibold">
-                  ✅ FREE to join • No payment required
-                </p>
-
-                {/* Bitcoin Team */}
-                <div
-                  className={`p-3 md:p-4 rounded-lg mb-4 border-2 transition-all ${
-                    currentPlayerTeam === 0
-                      ? "border-yellow-500 bg-yellow-500/20"
-                      : "border-white/20 hover:border-yellow-400/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2 md:space-x-3">
-                      <span className="text-2xl md:text-3xl">₿</span>
-                      <div>
-                        <h4 className="text-lg md:text-xl font-bold text-yellow-400">Team Bitcoin</h4>
-                        <p className="text-xs md:text-sm text-white/70">The Original</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg md:text-xl font-bold text-white">
-                        {bitcoinSupporters?.toString() || "0"}
-                      </div>
-                      <div className="text-xs text-white/70">supporters</div>
-                    </div>
-                  </div>
-                  {!hasJoined && (
-                    <button
-                      onClick={() => joinTeam(0)}
-                      disabled={isJoining}
-                      className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 md:py-3 px-4 rounded-lg transition-colors text-sm md:text-base"
-                    >
-                      {isJoining ? "Joining..." : "Join Team Bitcoin"}
-                    </button>
-                  )}
-                  {currentPlayerTeam === 0 && (
-                    <div className="bg-yellow-500/20 text-yellow-300 py-2 px-3 rounded text-center font-bold text-sm">
-                      ✅ You&apos;re on this team!
-                    </div>
-                  )}
-                </div>
-
-                {/* Ethereum Team */}
-                <div
-                  className={`p-3 md:p-4 rounded-lg border-2 transition-all ${
-                    currentPlayerTeam === 1
-                      ? "border-blue-500 bg-blue-500/20"
-                      : "border-white/20 hover:border-blue-400/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2 md:space-x-3">
-                      <span className="text-2xl md:text-3xl">Ξ</span>
-                      <div>
-                        <h4 className="text-lg md:text-xl font-bold text-blue-400">Team Ethereum</h4>
-                        <p className="text-xs md:text-sm text-white/70">Smart Contracts</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg md:text-xl font-bold text-white">
-                        {ethereumSupporters?.toString() || "0"}
-                      </div>
-                      <div className="text-xs text-white/70">supporters</div>
-                    </div>
-                  </div>
-                  {!hasJoined && (
-                    <button
-                      onClick={() => joinTeam(1)}
-                      disabled={isJoining}
-                      className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 md:py-3 px-4 rounded-lg transition-colors text-sm md:text-base"
-                    >
-                      {isJoining ? "Joining..." : "Join Team Ethereum"}
-                    </button>
-                  )}
-                  {currentPlayerTeam === 1 && (
-                    <div className="bg-blue-500/20 text-blue-300 py-2 px-3 rounded text-center font-bold text-sm">
-                      ✅ You&apos;re on this team!
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Player Lists */}
-              <div className="grid grid-cols-2 gap-2 md:gap-4">
-                {/* Bitcoin Players */}
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 md:p-4 border border-white/20">
-                  <h4 className="text-sm md:text-base font-bold text-yellow-400 mb-2">₿ Players</h4>
-                  <div className="space-y-1 max-h-32 md:max-h-40 overflow-y-auto">
-                    {bitcoinSupportersList && bitcoinSupportersList.length > 0 ? (
-                      bitcoinSupportersList.map((supporter, index) => (
-                        <div key={index} className="text-xs text-white/80">
-                          <Address address={supporter} size="xs" />
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-white/50 italic">No players yet</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Ethereum Players */}
-                <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 md:p-4 border border-white/20">
-                  <h4 className="text-sm md:text-base font-bold text-blue-400 mb-2">Ξ Players</h4>
-                  <div className="space-y-1 max-h-32 md:max-h-40 overflow-y-auto">
-                    {ethereumSupportersList && ethereumSupportersList.length > 0 ? (
-                      ethereumSupportersList.map((supporter, index) => (
-                        <div key={index} className="text-xs text-white/80">
-                          <Address address={supporter} size="xs" />
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-white/50 italic">No players yet</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Start Button (Organizer Only) */}
-              {isOrganizer && (
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 md:p-6 border border-white/20">
-                  <div className="space-y-3">
-                    <button
-                      onClick={startGame}
-                      disabled={!canStartGame || isStarting}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 md:py-4 px-6 rounded-lg transition-colors text-lg md:text-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isStarting ? "Starting..." : canStartGame ? "🚀 START RACE" : "Need players on both teams"}
-                    </button>
-                    <button
-                      onClick={resetGame}
-                      className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm md:text-base"
-                    >
-                      🔄 Reset Game
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tap Button (During Race) */}
-          {isRacing && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 md:p-6 border border-white/20">
-              <h3 className="text-xl md:text-2xl font-bold text-white mb-4 text-center">
-                {currentPlayerTeam !== null
-                  ? `Team ${currentPlayerTeam === 0 ? "Bitcoin" : "Ethereum"}`
-                  : "Spectator Mode"}
-              </h3>
-
-              {hasJoined && currentPlayerTeam !== null ? (
-                <div className="text-center space-y-4">
-                  <button
-                    onClick={handleTap}
-                    disabled={isTapping || countdown !== null}
-                    className={`w-full py-8 md:py-12 px-6 rounded-xl font-bold text-2xl md:text-4xl transition-all active:scale-95 ${
-                      currentPlayerTeam === 0
-                        ? "bg-yellow-500 hover:bg-yellow-600 text-black"
-                        : "bg-blue-500 hover:bg-blue-600 text-white"
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {countdown !== null ? "Wait..." : isTapping ? "Tapping..." : "TAP FAST! 🚀"}
-                  </button>
-
-                  <div className="space-y-2">
-                    <p className="text-lg md:text-xl font-bold text-white">
-                      Your Taps: {playerTaps?.toString() || "0"}
-                    </p>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-yellow-400">₿ Total:</span>
-                        <span className="text-white ml-1">{bitcoinTotalTaps?.toString() || "0"}</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-400">Ξ Total:</span>
-                        <span className="text-white ml-1">{ethereumTotalTaps?.toString() || "0"}</span>
-                      </div>
-                    </div>
-                    <div className="bg-green-900/50 p-3 rounded-lg border border-green-400/30 mt-3">
-                      <p className="text-green-300 text-xs font-semibold">⚡ SPEED CONTEST</p>
-                      <p className="text-white/80 text-xs">No cooldown! Tap as fast as you can!</p>
-                      <p className="text-blue-300 text-xs mt-1">💡 ETH used = Gas fees (not game cost)</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center space-y-4">
-                  <p className="text-white/70 text-sm md:text-base">
-                    {!connectedAddress ? "Connect wallet to participate" : "Join a team to race!"}
-                  </p>
-                  <div className="bg-blue-900/50 p-4 rounded-lg border border-blue-400/30">
-                    <p className="text-blue-300 text-sm font-semibold mb-2">💡 Demo Participants:</p>
-                    <p className="text-white/80 text-xs mb-2">
-                      Need test ETH? Use &quot;Burner Wallet&quot; (comes with free ETH) or ask organizer to send from
-                      faucet!
-                    </p>
-                    <p className="text-green-400 text-xs">✅ Joining teams is FREE - only gas fees apply</p>
-                  </div>
-                  <button
-                    onClick={() => router.push("/")}
-                    className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg text-sm md:text-base"
-                  >
-                    🏠 Back to Home
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Results Page */}
-          {isResults && winner && raceResults && (
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 md:p-6 border border-white/20">
-              {/* Winner Celebration */}
-              <div className="text-center mb-6">
-                <div className="mb-4">
-                  <span className="text-6xl md:text-8xl">{winner.coinId === 0 ? "₿" : "Ξ"}</span>
-                </div>
-                <h2 className="text-3xl md:text-5xl font-bold text-white mb-2">🏆 Team {winner.name} Wins! 🏆</h2>
-                <div className="flex justify-center space-x-2 text-4xl md:text-6xl mb-4">
-                  <span>🎉</span>
-                  <span>🏁</span>
-                  <span>🎉</span>
-                </div>
-              </div>
-
-              {/* Race Statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-yellow-500/20 p-4 rounded-lg border border-yellow-500/30">
-                  <h4 className="text-lg font-bold text-yellow-400 mb-2">₿ Team Bitcoin</h4>
-                  <p className="text-white text-xl font-bold">{raceResults.bitcoinTaps} taps</p>
-                  <p className="text-white/70 text-sm">
-                    {raceResults.totalPlayers > 0
-                      ? Math.round(raceResults.bitcoinTaps / (raceResults.totalPlayers / 2) || 1)
-                      : 0}{" "}
-                    avg taps/player
-                  </p>
-                </div>
-                <div className="bg-blue-500/20 p-4 rounded-lg border border-blue-500/30">
-                  <h4 className="text-lg font-bold text-blue-400 mb-2">Ξ Team Ethereum</h4>
-                  <p className="text-white text-xl font-bold">{raceResults.ethereumTaps} taps</p>
-                  <p className="text-white/70 text-sm">
-                    {raceResults.totalPlayers > 0
-                      ? Math.round(raceResults.ethereumTaps / (raceResults.totalPlayers / 2) || 1)
-                      : 0}{" "}
-                    avg taps/player
-                  </p>
-                </div>
-              </div>
-
-              {/* Overall Stats */}
-              <div className="bg-white/10 p-4 rounded-lg mb-6">
-                <h4 className="text-lg font-bold text-white mb-3">🏁 Race Summary</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                  <div>
-                    <p className="text-2xl font-bold text-white">{raceResults.totalPlayers}</p>
-                    <p className="text-white/70 text-sm">Total Players</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-white">
-                      {raceResults.bitcoinTaps + raceResults.ethereumTaps}
-                    </p>
-                    <p className="text-white/70 text-sm">Total Taps</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-white">{Math.round(raceResults.duration || 0)}s</p>
-                    <p className="text-white/70 text-sm">Race Duration</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-white">
-                      {Math.round((raceResults.bitcoinTaps + raceResults.ethereumTaps) / (raceResults.duration || 1))}
-                    </p>
-                    <p className="text-white/70 text-sm">Taps/Second</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Next Race Button (Organizer Only) */}
-              {isOrganizer && (
-                <div className="text-center">
-                  <button
-                    onClick={resetGame}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition-colors text-lg"
-                  >
-                    🔄 Start New Race
-                  </button>
-                </div>
-              )}
-
-              {/* Celebration Animation */}
-              <div className="text-center mt-6">
-                <p className="text-white/80 text-sm">Game will auto-reset for next round...</p>
-              </div>
+            <div className="text-center mt-6">
+              <button
+                onClick={() => router.push("/")}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-8 rounded-lg text-sm md:text-base border-2 border-purple-400/50 transform hover:scale-105 transition-all"
+              >
+                ← Back to Racing Hub
+              </button>
             </div>
           )}
         </div>
-
-        {/* Back Button (only in team selection) */}
-        {isTeamSelection && (
-          <div className="text-center mt-6">
-            <button
-              onClick={() => router.push("/")}
-              className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg text-sm md:text-base"
-            >
-              ← Back to Home
-            </button>
-          </div>
-        )}
       </div>
-    </div>
+    </>
   );
 }

@@ -18,22 +18,22 @@
 @plugin "daisyui/theme" {
   name: "light";
 
-  --color-primary: #93bbfb;
-  --color-primary-content: #212638;
-  --color-secondary: #dae8ff;
-  --color-secondary-content: #212638;
-  --color-accent: #93bbfb;
-  --color-accent-content: #212638;
-  --color-neutral: #212638;
+  --color-primary: #6d28d9;
+  --color-primary-content: #ffffff;
+  --color-secondary: #7c3aed;
+  --color-secondary-content: #ffffff;
+  --color-accent: #8b5cf6;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1f2937;
   --color-neutral-content: #ffffff;
-  --color-base-100: #ffffff;
-  --color-base-200: #f4f8ff;
-  --color-base-300: #dae8ff;
-  --color-base-content: #212638;
-  --color-info: #93bbfb;
-  --color-success: #34eeb6;
-  --color-warning: #ffcf72;
-  --color-error: #ff8863;
+  --color-base-100: #0f172a;
+  --color-base-200: #1e1b4b;
+  --color-base-300: #312e81;
+  --color-base-content: #ffffff;
+  --color-info: #6d28d9;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
 
   --radius-field: 9999rem;
   --radius-box: 1rem;
@@ -43,22 +43,22 @@
 @plugin "daisyui/theme" {
   name: "dark";
 
-  --color-primary: #212638;
-  --color-primary-content: #f9fbff;
-  --color-secondary: #323f61;
-  --color-secondary-content: #f9fbff;
-  --color-accent: #4969a6;
-  --color-accent-content: #f9fbff;
-  --color-neutral: #f9fbff;
-  --color-neutral-content: #385183;
-  --color-base-100: #385183;
-  --color-base-200: #2a3655;
-  --color-base-300: #212638;
-  --color-base-content: #f9fbff;
-  --color-info: #385183;
-  --color-success: #34eeb6;
-  --color-warning: #ffcf72;
-  --color-error: #ff8863;
+  --color-primary: #581c87;
+  --color-primary-content: #ffffff;
+  --color-secondary: #6d28d9;
+  --color-secondary-content: #ffffff;
+  --color-accent: #7c3aed;
+  --color-accent-content: #ffffff;
+  --color-neutral: #ffffff;
+  --color-neutral-content: #1f2937;
+  --color-base-100: #0f0a1a;
+  --color-base-200: #1e1b4b;
+  --color-base-300: #312e81;
+  --color-base-content: #ffffff;
+  --color-info: #581c87;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
 
   --radius-field: 9999rem;
   --radius-box: 1rem;
@@ -120,4 +120,89 @@
 
 .link:hover {
   opacity: 80%;
+}
+
+/* Racing-themed animations and styles */
+@keyframes racing-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.8);
+  }
+}
+
+@keyframes checkered-flag {
+  0% { background-position: 0 0; }
+  100% { background-position: 20px 20px; }
+}
+
+@keyframes speed-lines {
+  0% { transform: translateX(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes engine-rev {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.1) rotate(1deg); }
+  75% { transform: scale(1.1) rotate(-1deg); }
+}
+
+.racing-pulse {
+  animation: racing-pulse 2s ease-in-out infinite;
+}
+
+.checkered-pattern {
+  background-image:
+    linear-gradient(45deg, #000 25%, transparent 25%),
+    linear-gradient(-45deg, #000 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #000 75%),
+    linear-gradient(-45deg, transparent 75%, #000 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+.checkered-animated {
+  animation: checkered-flag 1s linear infinite;
+}
+
+.speed-lines::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: speed-lines 2s ease-in-out infinite;
+}
+
+.engine-rev {
+  animation: engine-rev 0.5s ease-in-out infinite;
+}
+
+/* Racing track styles */
+.racing-track {
+  background:
+    radial-gradient(ellipse at center, #374151 40%, #1f2937 70%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(255,255,255,0.1) 2px,
+      rgba(255,255,255,0.1) 4px
+    );
+}
+
+.racing-gradient {
+  background: linear-gradient(135deg,
+    #581c87 0%,
+    #6d28d9 25%,
+    #7c3aed 50%,
+    #6d28d9 75%,
+    #581c87 100%
+  );
 }
