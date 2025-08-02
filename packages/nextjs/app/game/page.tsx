@@ -14,8 +14,8 @@ import { notification } from "~~/utils/scaffold-eth";
 
 // 🚨 IMPORTANT: Demo organizer addresses (both can control the game)
 const ORGANIZER_ADDRESSES = [
-  "0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227", // Primary organizer (deployed contract)
-  "0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F", // Secondary organizer
+  "0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F", // Primary organizer (deployed contract)
+  "0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227", // Secondary organizer
 ];
 interface CoinPosition {
   x: number;

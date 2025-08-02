@@ -11,7 +11,7 @@ const deployRaceContract: DeployFunction = async function (hre: HardhatRuntimeEn
   const { deploy } = hre.deployments;
 
   // Set your wallet address as the organizer for demo control
-  const DEMO_ORGANIZER = "0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227";
+  const DEMO_ORGANIZER = "0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F";
 
   await deploy("Race", {
     from: deployer,

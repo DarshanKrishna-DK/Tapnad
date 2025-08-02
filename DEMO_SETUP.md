@@ -56,8 +56,9 @@ const ORGANIZER_ADDRESS = "0x742d35Cc6734C0532925a3b8D400aE1cF92C1c0a";
 - **Mobile**: Optimized for phone presentations
 
 ### 6. Organizer Setup
-- **Primary Organizer**: `0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227` (Set in smart contract)
-- **Secondary Organizer**: `0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F` (UI access only)
+- **Primary Organizer**: `0x9A00D0828743a8D94D995FC6e5A6BF50B71f256F` (Set in smart contract)
+- **Secondary Organizer**: `0xf33bfa994D5ebeb7DD14ff09fB0dEF2c8e2A7227` (UI access only)
+- **Contract Address**: `0x0f152ABAbF664D85c3209DcdB9A5c6449c53756a` (Latest deployment)
 - **Note**: Both addresses see organizer controls, but only primary can execute contract functions
 
 ### 7. Quick Start Commands
