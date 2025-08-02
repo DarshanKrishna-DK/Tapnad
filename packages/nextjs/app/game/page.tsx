@@ -35,21 +35,9 @@ export default function GamePage() {
   // Game flow control - overrides blockchain state for better UX
   const [gamePhase, setGamePhase] = useState<"teamSelection" | "racing" | "results">("teamSelection");
 
-  // Local racing state for instant tapping (with localStorage persistence)
-  const [localTaps, setLocalTaps] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("tapnad-local-taps");
-      return saved ? JSON.parse(saved) : { bitcoin: 0, ethereum: 0 };
-    }
-    return { bitcoin: 0, ethereum: 0 };
-  });
-  const [localPlayerTaps, setLocalPlayerTaps] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("tapnad-player-taps");
-      return saved ? parseInt(saved) : 0;
-    }
-    return 0;
-  });
+  // Local racing state for instant tapping (fresh start every session)
+  const [localTaps, setLocalTaps] = useState({ bitcoin: 0, ethereum: 0 });
+  const [localPlayerTaps, setLocalPlayerTaps] = useState(0);
   // WebSocket connection status for multiplayer sync
   const [isMultiplayerConnected, setIsMultiplayerConnected] = useState(false);
 
@@ -141,11 +129,6 @@ export default function GamePage() {
       // Reset local racing state for fresh start
       setLocalTaps({ bitcoin: 0, ethereum: 0 });
       setLocalPlayerTaps(0);
-      // Clear localStorage
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("tapnad-local-taps");
-        localStorage.removeItem("tapnad-player-taps");
-      }
       startCountdown();
     },
   });
@@ -200,11 +183,6 @@ export default function GamePage() {
       // Reset local racing state
       setLocalTaps({ bitcoin: 0, ethereum: 0 });
       setLocalPlayerTaps(0);
-      // Clear localStorage
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("tapnad-local-taps");
-        localStorage.removeItem("tapnad-player-taps");
-      }
       notification.info("🔄 Ready for new race! Join your team again.");
     },
   });
@@ -230,18 +208,22 @@ export default function GamePage() {
     }
   }, [blockchainGameState, hasJoined]);
 
-  // Save local tap data to localStorage for persistence
+  // Clear any previous game data on component mount for fresh start every session
   useEffect(() => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("tapnad-local-taps", JSON.stringify(localTaps));
-    }
-  }, [localTaps]);
+      // Clear all previous game data
+      localStorage.removeItem("tapnad-local-taps");
+      localStorage.removeItem("tapnad-player-taps");
+      localStorage.removeItem("tapnad-player-id");
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tapnad-player-taps", localPlayerTaps.toString());
+      // Ensure fresh game state
+      setLocalTaps({ bitcoin: 0, ethereum: 0 });
+      setLocalPlayerTaps(0);
+      setGamePhase("teamSelection");
+
+      console.log("🔄 Fresh game session started!");
     }
-  }, [localPlayerTaps]);
+  }, []); // Run only once on mount
 
   // Real-time multiplayer sync using WebSocket + localStorage fallback
   useEffect(() => {
@@ -267,25 +249,9 @@ export default function GamePage() {
       checkConnection();
       const connectionInterval = setInterval(checkConnection, 2000);
 
-      // Fallback: localStorage sync for same-device tabs
-      const handleStorageChange = (e: StorageEvent) => {
-        if (e.key === "tapnad-local-taps" && e.newValue) {
-          try {
-            const remoteTaps = JSON.parse(e.newValue);
-            setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
-              bitcoin: Math.max(prev.bitcoin, remoteTaps.bitcoin || 0),
-              ethereum: Math.max(prev.ethereum, remoteTaps.ethereum || 0),
-            }));
-          } catch (error) {
-            console.error("Error syncing remote taps:", error);
-          }
-        }
-      };
-
-      window.addEventListener("storage", handleStorageChange);
+      // Note: localStorage sync removed - each session starts fresh
 
       return () => {
-        window.removeEventListener("storage", handleStorageChange);
         clearInterval(connectionInterval);
         raceWS?.disconnect();
       };
@@ -450,16 +416,13 @@ export default function GamePage() {
         setTimeout(() => {
           const winnerName = teamName === "bitcoin" ? "Bitcoin" : "Ethereum";
           notification.success(`🏆 ${winnerName} WINS THE RACE! 🏁`);
+          setGamePhase("results");
 
           // Auto-reset after 5 seconds for next race
           setTimeout(() => {
             setLocalTaps({ bitcoin: 0, ethereum: 0 });
             setLocalPlayerTaps(0);
             setGamePhase("teamSelection");
-            if (typeof window !== "undefined") {
-              localStorage.removeItem("tapnad-local-taps");
-              localStorage.removeItem("tapnad-player-taps");
-            }
             notification.info("🔄 Ready for next race! Join your teams!");
           }, 5000);
         }, 100);
