@@ -28,12 +28,29 @@ export default function GamePage() {
   const router = useRouter();
   const [isJoining, setIsJoining] = useState(false);
   const [isTapping, setIsTapping] = useState(false);
-  const [lastTapTime, setLastTapTime] = useState(0);
+  // const [lastTapTime, setLastTapTime] = useState(0); // Not needed for instant tapping
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
   // Game flow control - overrides blockchain state for better UX
   const [gamePhase, setGamePhase] = useState<"teamSelection" | "racing" | "results">("teamSelection");
+
+  // Local racing state for instant tapping (with localStorage persistence)
+  const [localTaps, setLocalTaps] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tapnad-local-taps");
+      return saved ? JSON.parse(saved) : { bitcoin: 0, ethereum: 0 };
+    }
+    return { bitcoin: 0, ethereum: 0 };
+  });
+  const [localPlayerTaps, setLocalPlayerTaps] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tapnad-player-taps");
+      return saved ? parseInt(saved) : 0;
+    }
+    return 0;
+  });
+  const [lastBatchSubmit, setLastBatchSubmit] = useState(0);
 
   // Read blockchain game state to sync with local gamePhase
   const { data: blockchainGameState } = useScaffoldReadContract({
@@ -77,23 +94,24 @@ export default function GamePage() {
     args: [connectedAddress],
   });
 
-  const { data: bitcoinProgress } = useScaffoldReadContract({
-    contractName: "Race",
-    functionName: "getCoinProgress",
-    args: [0],
-  });
+  // Blockchain data (kept for fallback/verification - currently using local state)
+  // const { data: bitcoinProgress } = useScaffoldReadContract({
+  //   contractName: "Race",
+  //   functionName: "getCoinProgress",
+  //   args: [0],
+  // });
 
-  const { data: ethereumProgress } = useScaffoldReadContract({
-    contractName: "Race",
-    functionName: "getCoinProgress",
-    args: [1],
-  });
+  // const { data: ethereumProgress } = useScaffoldReadContract({
+  //   contractName: "Race",
+  //   functionName: "getCoinProgress",
+  //   args: [1],
+  // });
 
-  const { data: playerTaps } = useScaffoldReadContract({
-    contractName: "Race",
-    functionName: "playerTaps",
-    args: [connectedAddress],
-  });
+  // const { data: playerTaps } = useScaffoldReadContract({
+  //   contractName: "Race",
+  //   functionName: "playerTaps",
+  //   args: [connectedAddress],
+  // });
 
   const { data: bitcoinTotalTaps } = useScaffoldReadContract({
     contractName: "Race",
@@ -146,6 +164,15 @@ export default function GamePage() {
     onLogs: () => {
       setIsStarting(false);
       setGamePhase("racing");
+      // Reset local racing state for fresh start
+      setLocalTaps({ bitcoin: 0, ethereum: 0 });
+      setLocalPlayerTaps(0);
+      setLastBatchSubmit(0);
+      // Clear localStorage
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("tapnad-local-taps");
+        localStorage.removeItem("tapnad-player-taps");
+      }
       startCountdown();
     },
   });
@@ -197,6 +224,14 @@ export default function GamePage() {
       // Reset to team selection phase
       setGamePhase("teamSelection");
       setCountdown(null);
+      // Reset local racing state
+      setLocalTaps({ bitcoin: 0, ethereum: 0 });
+      setLocalPlayerTaps(0);
+      // Clear localStorage
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("tapnad-local-taps");
+        localStorage.removeItem("tapnad-player-taps");
+      }
       notification.info("🔄 Ready for new race! Join your team again.");
     },
   });
@@ -222,10 +257,18 @@ export default function GamePage() {
     }
   }, [blockchainGameState, hasJoined]);
 
-  // Track tapping activity for UX feedback
+  // Save local tap data to localStorage for persistence
   useEffect(() => {
-    // No cooldown needed - pure speed contest!
-  }, [lastTapTime]);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tapnad-local-taps", JSON.stringify(localTaps));
+    }
+  }, [localTaps]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("tapnad-player-taps", localPlayerTaps.toString());
+    }
+  }, [localPlayerTaps]);
 
   // Countdown timer
   const startCountdown = () => {
@@ -287,12 +330,27 @@ export default function GamePage() {
     };
   };
 
-  const bitcoinPosition = bitcoinProgress
-    ? calculateCoinPosition(Number(bitcoinProgress[0]), Number(bitcoinProgress[1]), 0)
-    : { x: isRacing ? 300 : 200, y: isRacing ? 40 : 45, angle: 0 }; // Bitcoin inner lane start
-  const ethereumPosition = ethereumProgress
-    ? calculateCoinPosition(Number(ethereumProgress[0]), Number(ethereumProgress[1]), 1)
-    : { x: isRacing ? 300 : 200, y: isRacing ? 28 : 37, angle: 0 }; // Ethereum outer lane start
+  // Calculate positions based on LOCAL TAPS for instant movement!
+  const getLocalCoinPosition = (teamName: "bitcoin" | "ethereum", coinId: number) => {
+    const taps = localTaps[teamName];
+    const supporters = coinId === 0 ? Number(bitcoinSupporters || 1) : Number(ethereumSupporters || 1);
+
+    // Fast racing formula: 2 position units per tap per supporter
+    const tapsPerSupporter = Math.floor(taps / supporters);
+    const totalPosition = tapsPerSupporter * 2;
+
+    const lap = Math.floor(totalPosition / 100); // 100 position units = 1 lap
+    const position = totalPosition % 100;
+
+    return { lap, position };
+  };
+
+  // Get positions with instant local updates
+  const bitcoinLocalProgress = getLocalCoinPosition("bitcoin", 0);
+  const ethereumLocalProgress = getLocalCoinPosition("ethereum", 1);
+
+  const bitcoinPosition = calculateCoinPosition(bitcoinLocalProgress.lap, bitcoinLocalProgress.position, 0);
+  const ethereumPosition = calculateCoinPosition(ethereumLocalProgress.lap, ethereumLocalProgress.position, 1);
 
   // Team selection function
   const joinTeam = async (teamId: 0 | 1) => {
@@ -341,34 +399,53 @@ export default function GamePage() {
     }
   };
 
-  // Tap function - with cooldown to slow down movement
-  const handleTap = async () => {
+  // INSTANT TAP FUNCTION - No blockchain transactions!
+  const handleTap = () => {
     if (!connectedAddress || !hasJoined) {
       notification.error("Please join a team first");
       return;
     }
 
-    // Add cooldown to slow down the race (500ms between taps)
+    // Pure speed contest - no cooldown, instant tapping!
     const now = Date.now();
-    if (lastTapTime && now - lastTapTime < 500) {
-      return; // Still in cooldown
+    const teamName = currentPlayerTeam === 0 ? "bitcoin" : "ethereum";
+
+    // Instantly update local state
+    setLocalPlayerTaps(prev => prev + 1);
+    setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
+      ...prev,
+      [teamName]: prev[teamName] + 1,
+    }));
+    // No need to track last tap time for instant tapping
+
+    // Visual feedback
+    setIsTapping(true);
+    setTimeout(() => setIsTapping(false), 100); // Quick visual feedback
+
+    // Batch submit taps every 3 seconds (optional - for blockchain sync)
+    if (now - lastBatchSubmit > 3000) {
+      batchSubmitTaps();
+      setLastBatchSubmit(now);
     }
+  };
+
+  // Optional: Batch submit accumulated taps to blockchain
+  const batchSubmitTaps = async () => {
+    if (!connectedAddress || !hasJoined || localPlayerTaps === 0) return;
 
     try {
-      setIsTapping(true);
-      setLastTapTime(now);
+      // Submit multiple taps at once (you can adjust this)
+      const tapsToSubmit = Math.min(localPlayerTaps, 10); // Submit up to 10 taps at once
 
-      // Execute tap transaction with suppressed notifications
-      await customTapAsync();
+      for (let i = 0; i < tapsToSubmit; i++) {
+        await customTapAsync();
+      }
+
+      // Optionally reduce local taps by submitted amount
+      // setLocalPlayerTaps(prev => Math.max(0, prev - tapsToSubmit));
     } catch (error) {
-      console.error("Error tapping:", error);
-      // Note: ETH deduction is just gas fees for blockchain transactions
-      notification.error("Tap failed - ensure you have test ETH for gas fees");
-    } finally {
-      // Add a small delay before allowing next tap
-      setTimeout(() => {
-        setIsTapping(false);
-      }, 300);
+      console.error("Batch submit failed:", error);
+      // Don't worry if batch fails - local racing continues
     }
   };
 
@@ -709,34 +786,30 @@ export default function GamePage() {
                         🏎️ ₿ Bitcoin Racer
                       </div>
                       <div className="text-yellow-200/80 text-xs md:text-sm font-semibold">
-                        Lap {bitcoinProgress ? (Number(bitcoinProgress[0]) + 1).toString() : "1"} / 3
+                        Lap {bitcoinLocalProgress.lap + 1} / 3
                       </div>
                       <div className="w-full bg-gray-800 rounded-full h-3 mt-2 border border-yellow-400/50">
                         <div
                           className="bg-gradient-to-r from-yellow-400 to-orange-500 h-3 rounded-full transition-all duration-300 racing-pulse"
-                          style={{ width: `${bitcoinProgress ? Number(bitcoinProgress[1]) : 0}%` }}
+                          style={{ width: `${bitcoinLocalProgress.position}%` }}
                         ></div>
                       </div>
-                      <div className="text-xs text-yellow-300 mt-1">
-                        {bitcoinProgress ? Number(bitcoinProgress[1]) : 0}% Complete
-                      </div>
+                      <div className="text-xs text-yellow-300 mt-1">{bitcoinLocalProgress.position}% Complete</div>
                     </div>
                     <div className="text-center bg-black/30 rounded-lg p-3 border border-blue-400/30">
                       <div className="text-blue-400 font-bold text-sm md:text-base flex items-center justify-center gap-2">
                         🏎️ Ξ Ethereum Racer
                       </div>
                       <div className="text-blue-200/80 text-xs md:text-sm font-semibold">
-                        Lap {ethereumProgress ? (Number(ethereumProgress[0]) + 1).toString() : "1"} / 3
+                        Lap {ethereumLocalProgress.lap + 1} / 3
                       </div>
                       <div className="w-full bg-gray-800 rounded-full h-3 mt-2 border border-blue-400/50">
                         <div
                           className="bg-gradient-to-r from-blue-400 to-cyan-500 h-3 rounded-full transition-all duration-300 racing-pulse"
-                          style={{ width: `${ethereumProgress ? Number(ethereumProgress[1]) : 0}%` }}
+                          style={{ width: `${ethereumLocalProgress.position}%` }}
                         ></div>
                       </div>
-                      <div className="text-xs text-blue-300 mt-1">
-                        {ethereumProgress ? Number(ethereumProgress[1]) : 0}% Complete
-                      </div>
+                      <div className="text-xs text-blue-300 mt-1">{ethereumLocalProgress.position}% Complete</div>
                     </div>
                   </div>
                 )}
@@ -932,30 +1005,32 @@ export default function GamePage() {
                       <div className="space-y-3">
                         <div className="text-center">
                           <p className="text-sm font-bold text-white">
-                            Your Taps: <span className="text-purple-300">{playerTaps?.toString() || "0"}</span>
+                            Your Taps: <span className="text-purple-300">{localPlayerTaps}</span>
                           </p>
                         </div>
 
-                        {/* Team Totals */}
+                        {/* Team Totals - INSTANT LOCAL COUNTS */}
                         <div className="grid grid-cols-2 gap-2">
                           <div className="bg-yellow-500/20 rounded-lg p-2 border border-yellow-400/30">
                             <div className="text-center">
                               <span className="text-yellow-400 font-bold text-xs">₿ Bitcoin</span>
-                              <div className="text-white text-sm font-bold">{bitcoinTotalTaps?.toString() || "0"}</div>
+                              <div className="text-white text-sm font-bold">{localTaps.bitcoin}</div>
                             </div>
                           </div>
                           <div className="bg-blue-500/20 rounded-lg p-2 border border-blue-400/30">
                             <div className="text-center">
                               <span className="text-blue-400 font-bold text-xs">Ξ Ethereum</span>
-                              <div className="text-white text-sm font-bold">{ethereumTotalTaps?.toString() || "0"}</div>
+                              <div className="text-white text-sm font-bold">{localTaps.ethereum}</div>
                             </div>
                           </div>
                         </div>
 
                         {/* Racing Info */}
                         <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 p-2 rounded-lg border border-green-400/30">
-                          <p className="text-green-300 text-xs font-bold text-center">HIGH-SPEED RACING</p>
-                          <p className="text-purple-300 text-xs text-center">Gas fees = Racing fuel</p>
+                          <p className="text-green-300 text-xs font-bold text-center">⚡ INSTANT RACING ⚡</p>
+                          <p className="text-purple-300 text-xs text-center">
+                            Tap as fast as you can! No transaction delays!
+                          </p>
                         </div>
                       </div>
                     </div>
