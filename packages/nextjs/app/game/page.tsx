@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "react-hot-toast";
 import { useAccount } from "wagmi";
 import { Address } from "~~/components/scaffold-eth";
 import {
@@ -50,7 +49,7 @@ export default function GamePage() {
     }
     return 0;
   });
-  const [lastBatchSubmit, setLastBatchSubmit] = useState(0);
+  // No batch submission needed - pure local gameplay!
 
   // Read blockchain game state to sync with local gamePhase
   const { data: blockchainGameState } = useScaffoldReadContract({
@@ -125,37 +124,10 @@ export default function GamePage() {
     args: [1],
   });
 
-  // Write function (with notifications disabled for cleaner tap experience)
+  // Write functions for organizer-only actions (start/reset game)
   const { writeContractAsync: writeRaceAsync } = useScaffoldWriteContract({
     contractName: "Race",
   });
-
-  // Custom tap function that suppresses success notifications
-  const customTapAsync = async () => {
-    // Store the original notification function temporarily
-    const originalSuccess = notification.success;
-
-    // Temporarily disable success notifications
-    (notification as any).success = () => "";
-
-    try {
-      const result = await writeRaceAsync({
-        functionName: "tap",
-      });
-
-      // Add a small delay then dismiss any lingering notifications
-      setTimeout(() => {
-        toast.dismiss();
-      }, 100);
-
-      return result;
-    } finally {
-      // Restore original notification function after a delay
-      setTimeout(() => {
-        (notification as any).success = originalSuccess;
-      }, 200);
-    }
-  };
 
   // Watch for game events and manage UI flow
   useScaffoldWatchContractEvent({
@@ -167,7 +139,6 @@ export default function GamePage() {
       // Reset local racing state for fresh start
       setLocalTaps({ bitcoin: 0, ethereum: 0 });
       setLocalPlayerTaps(0);
-      setLastBatchSubmit(0);
       // Clear localStorage
       if (typeof window !== "undefined") {
         localStorage.removeItem("tapnad-local-taps");
@@ -269,6 +240,29 @@ export default function GamePage() {
       localStorage.setItem("tapnad-player-taps", localPlayerTaps.toString());
     }
   }, [localPlayerTaps]);
+
+  // Real-time sync across multiple browsers/devices using localStorage events
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "tapnad-local-taps" && e.newValue) {
+        try {
+          const remoteTaps = JSON.parse(e.newValue);
+          // Sync with remote state if it's more advanced
+          setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
+            bitcoin: Math.max(prev.bitcoin, remoteTaps.bitcoin || 0),
+            ethereum: Math.max(prev.ethereum, remoteTaps.ethereum || 0),
+          }));
+        } catch (error) {
+          console.error("Error syncing remote taps:", error);
+        }
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", handleStorageChange);
+      return () => window.removeEventListener("storage", handleStorageChange);
+    }
+  }, []);
 
   // Countdown timer
   const startCountdown = () => {
@@ -399,7 +393,7 @@ export default function GamePage() {
     }
   };
 
-  // INSTANT TAP FUNCTION - No blockchain transactions!
+  // INSTANT TAP FUNCTION - Pure local gameplay, NO transactions!
   const handleTap = () => {
     if (!connectedAddress || !hasJoined) {
       notification.error("Please join a team first");
@@ -407,47 +401,51 @@ export default function GamePage() {
     }
 
     // Pure speed contest - no cooldown, instant tapping!
-    const now = Date.now();
     const teamName = currentPlayerTeam === 0 ? "bitcoin" : "ethereum";
 
     // Instantly update local state
     setLocalPlayerTaps(prev => prev + 1);
-    setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
-      ...prev,
-      [teamName]: prev[teamName] + 1,
-    }));
-    // No need to track last tap time for instant tapping
+    setLocalTaps((prev: { bitcoin: number; ethereum: number }) => {
+      const newTaps = {
+        ...prev,
+        [teamName]: prev[teamName] + 1,
+      };
+
+      // Check for game completion after updating taps
+      const supporters = teamName === "bitcoin" ? Number(bitcoinSupporters || 1) : Number(ethereumSupporters || 1);
+      const tapsPerSupporter = Math.floor(newTaps[teamName] / supporters);
+      const totalPosition = tapsPerSupporter * 2;
+      const lap = Math.floor(totalPosition / 100);
+
+      // End game when any team reaches 3 laps!
+      if (lap >= 3) {
+        setTimeout(() => {
+          const winnerName = teamName === "bitcoin" ? "Bitcoin" : "Ethereum";
+          notification.success(`🏆 ${winnerName} WINS THE RACE! 🏁`);
+
+          // Auto-reset after 5 seconds for next race
+          setTimeout(() => {
+            setLocalTaps({ bitcoin: 0, ethereum: 0 });
+            setLocalPlayerTaps(0);
+            setGamePhase("teamSelection");
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("tapnad-local-taps");
+              localStorage.removeItem("tapnad-player-taps");
+            }
+            notification.info("🔄 Ready for next race! Join your teams!");
+          }, 5000);
+        }, 100);
+      }
+
+      return newTaps;
+    });
 
     // Visual feedback
     setIsTapping(true);
     setTimeout(() => setIsTapping(false), 100); // Quick visual feedback
-
-    // Batch submit taps every 3 seconds (optional - for blockchain sync)
-    if (now - lastBatchSubmit > 3000) {
-      batchSubmitTaps();
-      setLastBatchSubmit(now);
-    }
   };
 
-  // Optional: Batch submit accumulated taps to blockchain
-  const batchSubmitTaps = async () => {
-    if (!connectedAddress || !hasJoined || localPlayerTaps === 0) return;
-
-    try {
-      // Submit multiple taps at once (you can adjust this)
-      const tapsToSubmit = Math.min(localPlayerTaps, 10); // Submit up to 10 taps at once
-
-      for (let i = 0; i < tapsToSubmit; i++) {
-        await customTapAsync();
-      }
-
-      // Optionally reduce local taps by submitted amount
-      // setLocalPlayerTaps(prev => Math.max(0, prev - tapsToSubmit));
-    } catch (error) {
-      console.error("Batch submit failed:", error);
-      // Don't worry if batch fails - local racing continues
-    }
-  };
+  // Removed batch submission - pure local gameplay only!
 
   // Mobile responsive classes for much wider track
   const trackSize = isRacing ? "w-full h-80 md:h-96 lg:h-[500px]" : "w-full h-64 md:h-80";
@@ -996,7 +994,7 @@ export default function GamePage() {
                             : "bg-gradient-to-br from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white border-blue-300"
                         } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
-                        {countdown !== null ? "Wait..." : isTapping ? "TAPPING..." : "TAP TO ACCELERATE"}
+                        {countdown !== null ? "Wait..." : isTapping ? "TAPPING!" : "TAP!"}
                       </button>
                     </div>
 
@@ -1027,10 +1025,8 @@ export default function GamePage() {
 
                         {/* Racing Info */}
                         <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 p-2 rounded-lg border border-green-400/30">
-                          <p className="text-green-300 text-xs font-bold text-center">⚡ INSTANT RACING ⚡</p>
-                          <p className="text-purple-300 text-xs text-center">
-                            Tap as fast as you can! No transaction delays!
-                          </p>
+                          <p className="text-green-300 text-xs font-bold text-center">🚀 PURE SPEED RACING 🚀</p>
+                          <p className="text-purple-300 text-xs text-center">No transactions! Just pure speed!</p>
                         </div>
                       </div>
                     </div>
