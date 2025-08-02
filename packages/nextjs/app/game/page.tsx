@@ -228,6 +228,7 @@ export default function GamePage() {
   // Real-time multiplayer sync using WebSocket + localStorage fallback
   useEffect(() => {
     let raceWS: ReturnType<typeof getRaceWebSocket> | null = null;
+    let syncInterval: NodeJS.Timeout;
 
     if (typeof window !== "undefined") {
       // Initialize WebSocket for real-time multiplayer sync
@@ -235,6 +236,7 @@ export default function GamePage() {
 
       // Handle incoming race data from other players
       raceWS.onData((data: RaceData) => {
+        console.log("🎮 Received race data from other player:", data);
         setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
           bitcoin: Math.max(prev.bitcoin, data.bitcoin),
           ethereum: Math.max(prev.ethereum, data.ethereum),
@@ -249,10 +251,32 @@ export default function GamePage() {
       checkConnection();
       const connectionInterval = setInterval(checkConnection, 2000);
 
-      // Note: localStorage sync removed - each session starts fresh
+      // Fallback: Poll localStorage for cross-device sync
+      const lastSyncCheck = { timestamp: 0 };
+      syncInterval = setInterval(() => {
+        try {
+          const broadcastData = localStorage.getItem("tapnad-last-broadcast");
+          if (broadcastData) {
+            const data: RaceData = JSON.parse(broadcastData);
+
+            // Only sync if it's newer and from a different player
+            if (data.timestamp > lastSyncCheck.timestamp && data.playerId !== raceWS?.getCurrentPlayerId()) {
+              console.log("🔄 Syncing from localStorage broadcast:", data);
+              setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
+                bitcoin: Math.max(prev.bitcoin, data.bitcoin),
+                ethereum: Math.max(prev.ethereum, data.ethereum),
+              }));
+              lastSyncCheck.timestamp = data.timestamp;
+            }
+          }
+        } catch (error) {
+          console.error("Error syncing from localStorage:", error);
+        }
+      }, 500); // Check every 500ms for responsive updates
 
       return () => {
         clearInterval(connectionInterval);
+        clearInterval(syncInterval);
         raceWS?.disconnect();
       };
     }
@@ -1067,15 +1091,22 @@ export default function GamePage() {
                         <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 p-2 rounded-lg border border-green-400/30">
                           <p className="text-green-300 text-xs font-bold text-center">🚀 PURE SPEED RACING 🚀</p>
                           <p className="text-purple-300 text-xs text-center">No transactions! Just pure speed!</p>
-                          <div className="flex justify-center items-center gap-1 mt-1">
-                            <div
-                              className={`w-2 h-2 rounded-full ${
-                                isMultiplayerConnected ? "bg-green-400 animate-pulse" : "bg-gray-500"
-                              }`}
-                            ></div>
-                            <span className={`text-xs ${isMultiplayerConnected ? "text-green-300" : "text-gray-400"}`}>
-                              {isMultiplayerConnected ? "Multiplayer ON" : "Single Player"}
-                            </span>
+                          <div className="flex flex-col items-center gap-1 mt-1">
+                            <div className="flex justify-center items-center gap-1">
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  isMultiplayerConnected ? "bg-green-400 animate-pulse" : "bg-gray-500"
+                                }`}
+                              ></div>
+                              <span
+                                className={`text-xs ${isMultiplayerConnected ? "text-green-300" : "text-gray-400"}`}
+                              >
+                                {isMultiplayerConnected ? "Multiplayer ON" : "Single Player"}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              BTC: {localTaps.bitcoin} | ETH: {localTaps.ethereum}
+                            </div>
                           </div>
                         </div>
                       </div>
