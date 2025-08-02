@@ -28,11 +28,17 @@ export default function GamePage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
-  // Read contract state
-  const { data: gameState } = useScaffoldReadContract({
-    contractName: "Race",
-    functionName: "gameState",
-  });
+  // Game flow control - overrides blockchain state for better UX
+  const [gamePhase, setGamePhase] = useState<"teamSelection" | "racing" | "results">("teamSelection");
+  const [winner, setWinner] = useState<{ coinId: number; name: string } | null>(null);
+  const [raceResults, setRaceResults] = useState<{
+    duration: number;
+    bitcoinTaps: number;
+    ethereumTaps: number;
+    totalPlayers: number;
+  } | null>(null);
+
+  // Note: We use local gamePhase state instead of blockchain gameState for better UX flow
 
   const { data: bitcoinSupporters } = useScaffoldReadContract({
     contractName: "Race",
@@ -100,17 +106,18 @@ export default function GamePage() {
     args: [1],
   });
 
-  // Write function
+  // Write function (with notifications disabled for cleaner tap experience)
   const { writeContractAsync: writeRaceAsync } = useScaffoldWriteContract({
     contractName: "Race",
   });
 
-  // Watch for game events
+  // Watch for game events and manage UI flow
   useScaffoldWatchContractEvent({
     contractName: "Race",
     eventName: "GameStarted",
     onLogs: () => {
       setIsStarting(false);
+      setGamePhase("racing");
       startCountdown();
     },
   });
@@ -122,7 +129,7 @@ export default function GamePage() {
       logs.forEach(log => {
         const teamName = Number(log.args.coinId) === 0 ? "Bitcoin" : "Ethereum";
         if (log.args.player === connectedAddress) {
-          notification.success(`You joined Team ${teamName}!`);
+          notification.success(`You joined Team ${teamName}! 🎉`);
         } else {
           notification.info(`Player joined Team ${teamName}`);
         }
@@ -135,10 +142,21 @@ export default function GamePage() {
     eventName: "GameFinished",
     onLogs: logs => {
       logs.forEach(log => {
-        const winnerTeam = Number(log.args.winningCoinId) === 0 ? "Bitcoin" : "Ethereum";
-        notification.success(`🏆 Team ${winnerTeam} wins! Game auto-resetting for next round...`);
+        const winnerCoinId = Number(log.args.winningCoinId);
+        const winnerName = winnerCoinId === 0 ? "Bitcoin" : "Ethereum";
+
+        // Capture race results
+        setWinner({ coinId: winnerCoinId, name: winnerName });
+        setRaceResults({
+          duration: Number(log.args.duration) || 0,
+          bitcoinTaps: Number(bitcoinTotalTaps) || 0,
+          ethereumTaps: Number(ethereumTotalTaps) || 0,
+          totalPlayers: (Number(bitcoinSupporters) || 0) + (Number(ethereumSupporters) || 0),
+        });
+
+        // Transition to results page
+        setGamePhase("results");
         setCountdown(null);
-        // Game will auto-reset to lobby state
       });
     },
   });
@@ -147,8 +165,12 @@ export default function GamePage() {
     contractName: "Race",
     eventName: "GameReset",
     onLogs: () => {
-      notification.info("🔄 Ready for new race! Join your team again.");
+      // Reset to team selection phase
+      setGamePhase("teamSelection");
+      setWinner(null);
+      setRaceResults(null);
       setCountdown(null);
+      notification.info("🔄 Ready for new race! Join your team again.");
     },
   });
 
@@ -176,8 +198,12 @@ export default function GamePage() {
   const canStartGame =
     bitcoinSupporters && ethereumSupporters && Number(bitcoinSupporters) > 0 && Number(ethereumSupporters) > 0;
   const currentPlayerTeam = playerTeam && Number(playerTeam) > 0 ? Number(playerTeam) - 1 : null;
-  const isLobby = gameState !== undefined && Number(gameState) === 0;
-  const isRacing = gameState !== undefined && Number(gameState) === 1;
+  // Game flow helpers - use our local state for better UX
+  const isTeamSelection = gamePhase === "teamSelection";
+  const isRacing = gamePhase === "racing";
+  const isResults = gamePhase === "results";
+
+  // Note: We override blockchain state with local gamePhase for better UX flow
 
   // Calculate coin positions
   const calculateCoinPosition = (lap: number, position: number): CoinPosition => {
@@ -262,6 +288,7 @@ export default function GamePage() {
       await writeRaceAsync({
         functionName: "tap",
       });
+      // No success notification - keep it fast and clean!
     } catch (error) {
       console.error("Error tapping:", error);
       // Note: ETH deduction is just gas fees for blockchain transactions
@@ -400,7 +427,7 @@ export default function GamePage() {
           </div>
 
           {/* Team Selection & Controls */}
-          {!isRacing && (
+          {isTeamSelection && (
             <div className="space-y-4 md:space-y-6">
               {/* Team Selection */}
               <div className="bg-white/10 backdrop-blur-sm rounded-xl md:rounded-2xl p-4 md:p-6 border border-white/20">
@@ -613,10 +640,96 @@ export default function GamePage() {
               )}
             </div>
           )}
+
+          {/* Results Page */}
+          {isResults && winner && raceResults && (
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 md:p-6 border border-white/20">
+              {/* Winner Celebration */}
+              <div className="text-center mb-6">
+                <div className="mb-4">
+                  <span className="text-6xl md:text-8xl">{winner.coinId === 0 ? "₿" : "Ξ"}</span>
+                </div>
+                <h2 className="text-3xl md:text-5xl font-bold text-white mb-2">🏆 Team {winner.name} Wins! 🏆</h2>
+                <div className="flex justify-center space-x-2 text-4xl md:text-6xl mb-4">
+                  <span>🎉</span>
+                  <span>🏁</span>
+                  <span>🎉</span>
+                </div>
+              </div>
+
+              {/* Race Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-yellow-500/20 p-4 rounded-lg border border-yellow-500/30">
+                  <h4 className="text-lg font-bold text-yellow-400 mb-2">₿ Team Bitcoin</h4>
+                  <p className="text-white text-xl font-bold">{raceResults.bitcoinTaps} taps</p>
+                  <p className="text-white/70 text-sm">
+                    {raceResults.totalPlayers > 0
+                      ? Math.round(raceResults.bitcoinTaps / (raceResults.totalPlayers / 2) || 1)
+                      : 0}{" "}
+                    avg taps/player
+                  </p>
+                </div>
+                <div className="bg-blue-500/20 p-4 rounded-lg border border-blue-500/30">
+                  <h4 className="text-lg font-bold text-blue-400 mb-2">Ξ Team Ethereum</h4>
+                  <p className="text-white text-xl font-bold">{raceResults.ethereumTaps} taps</p>
+                  <p className="text-white/70 text-sm">
+                    {raceResults.totalPlayers > 0
+                      ? Math.round(raceResults.ethereumTaps / (raceResults.totalPlayers / 2) || 1)
+                      : 0}{" "}
+                    avg taps/player
+                  </p>
+                </div>
+              </div>
+
+              {/* Overall Stats */}
+              <div className="bg-white/10 p-4 rounded-lg mb-6">
+                <h4 className="text-lg font-bold text-white mb-3">🏁 Race Summary</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-bold text-white">{raceResults.totalPlayers}</p>
+                    <p className="text-white/70 text-sm">Total Players</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-white">
+                      {raceResults.bitcoinTaps + raceResults.ethereumTaps}
+                    </p>
+                    <p className="text-white/70 text-sm">Total Taps</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-white">{Math.round(raceResults.duration || 0)}s</p>
+                    <p className="text-white/70 text-sm">Race Duration</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-white">
+                      {Math.round((raceResults.bitcoinTaps + raceResults.ethereumTaps) / (raceResults.duration || 1))}
+                    </p>
+                    <p className="text-white/70 text-sm">Taps/Second</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Race Button (Organizer Only) */}
+              {isOrganizer && (
+                <div className="text-center">
+                  <button
+                    onClick={resetGame}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition-colors text-lg"
+                  >
+                    🔄 Start New Race
+                  </button>
+                </div>
+              )}
+
+              {/* Celebration Animation */}
+              <div className="text-center mt-6">
+                <p className="text-white/80 text-sm">Game will auto-reset for next round...</p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Back Button (only in lobby) */}
-        {isLobby && (
+        {/* Back Button (only in team selection) */}
+        {isTeamSelection && (
           <div className="text-center mt-6">
             <button
               onClick={() => router.push("/")}
