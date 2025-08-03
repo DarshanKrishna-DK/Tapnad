@@ -119,17 +119,27 @@ export default function GamePage() {
     contractName: "Race",
   });
 
-  // Watch for game events and manage UI flow
+  // Enhanced event watching with immediate UI updates
   useScaffoldWatchContractEvent({
     contractName: "Race",
     eventName: "GameStarted",
-    onLogs: () => {
+    onLogs: logs => {
+      console.log("🏁 GameStarted event detected:", logs);
       setIsStarting(false);
       setGamePhase("racing");
       // Reset local racing state for fresh start
       setLocalTaps({ bitcoin: 0, ethereum: 0 });
       setLocalPlayerTaps(0);
       startCountdown();
+
+      // Broadcast game start to other tabs
+      localStorage.setItem(
+        "tapnad-blockchain-event",
+        JSON.stringify({
+          type: "GameStarted",
+          timestamp: Date.now(),
+        }),
+      );
     },
   });
 
@@ -137,6 +147,8 @@ export default function GamePage() {
     contractName: "Race",
     eventName: "PlayerJoined",
     onLogs: logs => {
+      console.log("👥 PlayerJoined event detected:", logs);
+
       logs.forEach(log => {
         const teamName = Number(log.args.coinId) === 0 ? "Bitcoin" : "Ethereum";
         if (log.args.player === connectedAddress) {
@@ -145,6 +157,16 @@ export default function GamePage() {
           notification.info(`Player joined Team ${teamName}`);
         }
       });
+
+      // Broadcast player join to other tabs for immediate UI updates
+      localStorage.setItem(
+        "tapnad-blockchain-event",
+        JSON.stringify({
+          type: "PlayerJoined",
+          timestamp: Date.now(),
+          logs: logs,
+        }),
+      );
     },
   });
 
@@ -225,13 +247,13 @@ export default function GamePage() {
     }
   }, []); // Run only once on mount
 
-  // Real-time multiplayer sync using WebSocket + localStorage fallback
+  // Real-time multiplayer sync and enhanced blockchain event monitoring
   useEffect(() => {
     let raceWS: ReturnType<typeof getRaceWebSocket> | null = null;
-    let syncInterval: NodeJS.Timeout;
+    let blockchainRefreshInterval: NodeJS.Timeout;
 
     if (typeof window !== "undefined") {
-      // Initialize WebSocket for real-time multiplayer sync
+      // Initialize racing sync for real-time multiplayer
       raceWS = getRaceWebSocket();
 
       // Handle incoming race data from other players
@@ -249,34 +271,43 @@ export default function GamePage() {
       };
 
       checkConnection();
-      const connectionInterval = setInterval(checkConnection, 2000);
+      const connectionInterval = setInterval(checkConnection, 1000);
 
-      // Fallback: Poll localStorage for cross-device sync
-      const lastSyncCheck = { timestamp: 0 };
-      syncInterval = setInterval(() => {
-        try {
-          const broadcastData = localStorage.getItem("tapnad-last-broadcast");
-          if (broadcastData) {
-            const data: RaceData = JSON.parse(broadcastData);
+      // Enhanced blockchain monitoring - force refresh contract data every 2 seconds
+      blockchainRefreshInterval = setInterval(() => {
+        // This will trigger re-reads of all contract data
+        // Forcing useScaffoldReadContract hooks to refetch
+        window.dispatchEvent(new Event("focus"));
+      }, 2000);
 
-            // Only sync if it's newer and from a different player
-            if (data.timestamp > lastSyncCheck.timestamp && data.playerId !== raceWS?.getCurrentPlayerId()) {
-              console.log("🔄 Syncing from localStorage broadcast:", data);
-              setLocalTaps((prev: { bitcoin: number; ethereum: number }) => ({
-                bitcoin: Math.max(prev.bitcoin, data.bitcoin),
-                ethereum: Math.max(prev.ethereum, data.ethereum),
-              }));
-              lastSyncCheck.timestamp = data.timestamp;
+      // Listen for blockchain events from other tabs
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === "tapnad-blockchain-event" && e.newValue) {
+          try {
+            const eventData = JSON.parse(e.newValue);
+            console.log("🔄 Syncing blockchain event from other tab:", eventData);
+
+            // Force refresh of all contract reads
+            window.dispatchEvent(new Event("focus"));
+
+            // Handle specific events
+            if (eventData.type === "GameStarted") {
+              setGamePhase("racing");
+              setLocalTaps({ bitcoin: 0, ethereum: 0 });
+              setLocalPlayerTaps(0);
             }
+          } catch (error) {
+            console.error("Error syncing blockchain event:", error);
           }
-        } catch (error) {
-          console.error("Error syncing from localStorage:", error);
         }
-      }, 500); // Check every 500ms for responsive updates
+      };
+
+      window.addEventListener("storage", handleStorageChange);
 
       return () => {
         clearInterval(connectionInterval);
-        clearInterval(syncInterval);
+        clearInterval(blockchainRefreshInterval);
+        window.removeEventListener("storage", handleStorageChange);
         raceWS?.disconnect();
       };
     }
@@ -423,6 +454,8 @@ export default function GamePage() {
 
     // Instantly update local state
     setLocalPlayerTaps(prev => prev + 1);
+    console.log(`🎯 TAP! Team: ${teamName}, Player taps: ${localPlayerTaps + 1}`);
+
     setLocalTaps((prev: { bitcoin: number; ethereum: number }) => {
       const newTaps = {
         ...prev,
@@ -1105,8 +1138,9 @@ export default function GamePage() {
                               </span>
                             </div>
                             <div className="text-xs text-gray-400">
-                              BTC: {localTaps.bitcoin} | ETH: {localTaps.ethereum}
+                              LIVE: BTC {localTaps.bitcoin} | ETH {localTaps.ethereum}
                             </div>
+                            <div className="text-xs text-yellow-300">Your taps: {localPlayerTaps}</div>
                           </div>
                         </div>
                       </div>

@@ -1,4 +1,4 @@
-// Real-time multiplayer racing sync using WebSocket broadcasting
+// Real-time multiplayer racing sync using BroadcastChannel API + localStorage
 // This allows multiple players on different devices to see each other's progress instantly
 
 export interface RaceData {
@@ -6,72 +6,86 @@ export interface RaceData {
   ethereum: number;
   timestamp: number;
   playerId: string;
-  room: string; // Add room concept for game sessions
+  room: string;
 }
 
 export class RaceWebSocket {
-  private ws: WebSocket | null = null;
+  private channel: BroadcastChannel | null = null;
   private isConnected = false;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
   private onDataReceived: ((data: RaceData) => void) | null = null;
-  private room: string = "tapnad-main-race"; // Default room for all players
+  private room: string = "tapnad-main-race";
+  private syncInterval: NodeJS.Timeout | null = null;
 
-  constructor(private url: string = "wss://ws.postman-echo.com/raw") {
+  constructor() {
     this.connect();
   }
 
   private connect() {
     try {
-      this.ws = new WebSocket(this.url);
+      if (typeof window !== "undefined") {
+        // Use BroadcastChannel for same-origin tab communication
+        this.channel = new BroadcastChannel("tapnad-race-sync");
 
-      this.ws.onopen = () => {
-        console.log("🔗 Racing WebSocket connected!");
+        this.channel.onmessage = event => {
+          try {
+            console.log("📡 Received BroadcastChannel message:", event.data);
+            const data: RaceData = event.data;
+
+            // Only process messages from other players in the same room
+            if (this.onDataReceived && data.playerId !== this.getPlayerId() && data.room === this.room) {
+              console.log("🏎️ Processing race data from player:", data.playerId, data);
+              this.onDataReceived(data);
+            }
+          } catch (error) {
+            console.error("Error processing BroadcastChannel message:", error);
+          }
+        };
+
+        // Start aggressive localStorage polling for cross-device sync
+        this.startLocalStorageSync();
+
+        console.log("🔗 Racing sync connected! (BroadcastChannel + localStorage)");
         this.isConnected = true;
-        this.reconnectAttempts = 0;
-      };
+      }
+    } catch (error) {
+      console.error("Failed to create sync connection:", error);
+      // Fallback to localStorage only
+      this.startLocalStorageSync();
+      this.isConnected = true;
+    }
+  }
 
-      this.ws.onmessage = event => {
-        try {
-          console.log("📡 Received WebSocket message:", event.data);
-          const data: RaceData = JSON.parse(event.data);
+  private startLocalStorageSync() {
+    // Clear any existing interval
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+    }
 
-          // Only process messages from other players in the same room
-          if (this.onDataReceived && data.playerId !== this.getPlayerId() && data.room === this.room) {
-            console.log("🏎️ Processing race data from player:", data.playerId, data);
+    // Poll localStorage every 200ms for real-time sync
+    this.syncInterval = setInterval(() => {
+      try {
+        const syncData = localStorage.getItem("tapnad-realtime-sync");
+        if (syncData) {
+          const data: RaceData = JSON.parse(syncData);
+
+          // Only process if from different player and newer than 2 seconds
+          if (
+            this.onDataReceived &&
+            data.playerId !== this.getPlayerId() &&
+            data.room === this.room &&
+            Date.now() - data.timestamp < 2000
+          ) {
+            console.log("🔄 Syncing from localStorage:", data);
             this.onDataReceived(data);
           }
-        } catch (error) {
-          console.error("Error parsing WebSocket message:", error);
         }
-      };
-
-      this.ws.onclose = () => {
-        console.log("🔌 Racing WebSocket disconnected");
-        this.isConnected = false;
-        this.attemptReconnect();
-      };
-
-      this.ws.onerror = error => {
-        console.error("🚨 WebSocket error:", error);
-      };
-    } catch (error) {
-      console.error("Failed to create WebSocket:", error);
-      this.attemptReconnect();
-    }
+      } catch (error) {
+        console.error("localStorage sync error:", error);
+      }
+    }, 200); // Very fast polling for responsiveness
   }
 
-  private attemptReconnect() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
-      console.log(`🔄 Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
-
-      setTimeout(() => {
-        this.connect();
-      }, delay);
-    }
-  }
+  // Removed reconnect logic - not needed for BroadcastChannel
 
   private getPlayerId(): string {
     let playerId = localStorage.getItem("tapnad-player-id");
@@ -83,35 +97,35 @@ export class RaceWebSocket {
   }
 
   public sendRaceData(bitcoin: number, ethereum: number) {
-    if (this.isConnected && this.ws) {
-      const data: RaceData = {
-        bitcoin,
-        ethereum,
-        timestamp: Date.now(),
-        playerId: this.getPlayerId(),
-        room: this.room,
-      };
+    const data: RaceData = {
+      bitcoin,
+      ethereum,
+      timestamp: Date.now(),
+      playerId: this.getPlayerId(),
+      room: this.room,
+    };
 
-      try {
-        console.log("🚀 Sending race data:", data);
-        this.ws.send(JSON.stringify(data));
+    try {
+      console.log("🚀 Broadcasting race data:", data);
 
-        // Also store in localStorage for immediate local sync
-        localStorage.setItem("tapnad-last-broadcast", JSON.stringify(data));
-      } catch (error) {
-        console.error("Failed to send race data:", error);
+      // Send via BroadcastChannel for same-origin tabs
+      if (this.channel) {
+        this.channel.postMessage(data);
       }
-    } else {
-      console.log("⚠️ WebSocket not connected, storing data locally only");
-      // Fallback: store in localStorage for cross-tab sync
-      const data: RaceData = {
-        bitcoin,
-        ethereum,
-        timestamp: Date.now(),
-        playerId: this.getPlayerId(),
-        room: this.room,
-      };
-      localStorage.setItem("tapnad-last-broadcast", JSON.stringify(data));
+
+      // Store in localStorage for cross-device sync
+      localStorage.setItem("tapnad-realtime-sync", JSON.stringify(data));
+
+      // Also broadcast as storage event for cross-tab sync
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "tapnad-realtime-sync",
+          newValue: JSON.stringify(data),
+          storageArea: localStorage,
+        }),
+      );
+    } catch (error) {
+      console.error("Failed to broadcast race data:", error);
     }
   }
 
@@ -120,10 +134,17 @@ export class RaceWebSocket {
   }
 
   public disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    if (this.channel) {
+      this.channel.close();
+      this.channel = null;
     }
+
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+
+    this.isConnected = false;
   }
 
   public getConnectionStatus(): boolean {

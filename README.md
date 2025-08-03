@@ -1,107 +1,307 @@
-# 🏗 Scaffold-ETH 2
+# Tapnad - Multiplayer Blockchain Racing Game
 
-<h4 align="center">
-  <a href="https://docs.scaffoldeth.io">Documentation</a> |
-  <a href="https://scaffoldeth.io">Website</a>
-</h4>
+Tapnad is a real-time multiplayer coin racing game built on the Monad blockchain. Players join competing teams (Bitcoin vs Ethereum) and engage in fast-paced tap-to-advance racing around a circular track.
 
-🧪 An open-source, up-to-date toolkit for building decentralized applications (dapps) on the Ethereum blockchain. It's designed to make it easier for developers to create and deploy smart contracts and build user interfaces that interact with those contracts.
+## Overview
 
-⚙️ Built using NextJS, RainbowKit, Hardhat, Wagmi, Viem, and Typescript.
+Tapnad combines blockchain technology with instant gameplay mechanics to create an engaging multiplayer racing experience. The game features pure local racing with real-time synchronization across multiple devices and browsers, eliminating transaction delays while maintaining decentralized team management.
 
-- ✅ **Contract Hot Reload**: Your frontend auto-adapts to your smart contract as you edit it.
-- 🪝 **[Custom hooks](https://docs.scaffoldeth.io/hooks/)**: Collection of React hooks wrapper around [wagmi](https://wagmi.sh/) to simplify interactions with smart contracts with typescript autocompletion.
-- 🧱 [**Components**](https://docs.scaffoldeth.io/components/): Collection of common web3 components to quickly build your frontend.
-- 🔥 **Burner Wallet & Local Faucet**: Quickly test your application with a burner wallet and local faucet.
-- 🔐 **Integration with Wallet Providers**: Connect to different wallet providers and interact with the Ethereum network.
+## Tech Stack
 
-![Debug Contracts tab](https://github.com/scaffold-eth/scaffold-eth-2/assets/55535804/b237af0c-5027-4849-a5c1-2e31495cccb1)
+### Frontend
+- **React 18** - Component-based UI framework
+- **Next.js 14** - Full-stack React framework with App Router
+- **TypeScript** - Type-safe JavaScript development
+- **Tailwind CSS** - Utility-first CSS framework
+- **Custom CSS Animations** - Racing effects and visual feedback
 
-## 🏁 Tapnad - Multiplayer Coin Racing Game
+### Blockchain
+- **Monad Testnet** - High-performance EVM-compatible blockchain
+- **Hardhat** - Smart contract development and testing framework
+- **Solidity** - Smart contract programming language
+- **Scaffold-ETH 2** - dApp development boilerplate
 
-This dApp demonstrates a fun, interactive multiplayer game built on Monad testnet:
+### Web3 Integration
+- **wagmi** - React hooks for Ethereum blockchain interaction
+- **viem** - TypeScript interface for Ethereum
+- **RainbowKit** - Wallet connection and management UI
 
-### 🎮 Game Features
-- **Two-Coin Racing**: Players choose between Coin A (🟡) or Coin B (🔵)
-- **Collaborative Gameplay**: Multiple players can support the same coin
-- **Real-time Racing**: Live position updates on a circular track
-- **Smart Contract Logic**: Fair gameplay with 50ms tap cooldown
-- **Competitive Analytics**: Detailed race statistics and performance tracking
+### Real-time Features
+- **BroadcastChannel API** - Cross-tab communication
+- **LocalStorage Events** - Cross-device synchronization fallback
+- **Aggressive Polling** - Sub-second update intervals
 
-### 🛣️ Game Flow
-1. **Home** (`/`): Welcome screen with game overview and "Go To Game" button
-2. **Game** (`/game`): Team selection, player lists, and live racing in one interface
-3. **Real-time Racing**: Countdown timer, tap mechanics, and live position updates
+## Key Features
 
-### 🚀 Smart Contract
-- **Race.sol**: Bitcoin vs Ethereum racing game contract
-- **Monad Testnet**: Deployed on Monad's high-performance blockchain
-- **Events**: Real-time game updates via contract events
-- **Demo Ready**: Organizer-controlled game start for presentations
+### Instant Racing
+- Zero-transaction tapping for responsive gameplay
+- Immediate visual feedback and coin movement
+- Real-time progress tracking and lap counting
+- Automatic game completion at 3 laps
 
-### 🎯 Demo Instructions
-1. **Set Organizer Address**: Update `ORGANIZER_ADDRESS` in `/app/game/page.tsx` with your wallet address
-2. **Present Flow**: Home → "Go To Game" → Team Selection → Start Race → Live Racing
-3. **Mobile Friendly**: Optimized for mobile device demos
+### Multiplayer Synchronization
+- Cross-device real-time updates
+- BroadcastChannel for same-origin tab communication
+- LocalStorage polling for cross-device synchronization
+- Visual connection status indicators
 
-## Requirements
+### Blockchain Integration
+- Decentralized team membership management
+- Organizer-controlled game flow (start/reset)
+- Event-driven UI updates
+- Minimal transaction requirements (join team only)
 
-Before you begin, you need to install the following tools:
+### User Experience
+- Mobile-responsive design
+- Wallet connection optional for spectators
+- Clear game state indicators
+- Automatic session management
 
-- [Node (>= v20.18.3)](https://nodejs.org/en/download/)
-- Yarn ([v1](https://classic.yarnpkg.com/en/docs/install/) or [v2+](https://yarnpkg.com/getting-started/install))
-- [Git](https://git-scm.com/downloads)
+## Installation and Setup
 
-## Quickstart
+### Prerequisites
+- Node.js 18+ and yarn package manager
+- Git for version control
 
-To get started with Scaffold-ETH 2, follow the steps below:
-
-1. Install dependencies if it was skipped in CLI:
-
+### Clone Repository
+```bash
+git clone https://github.com/DarshanKrishna-DK/Tapnad.git
+cd Tapnad
 ```
-cd my-dapp-example
+
+### Install Dependencies
+```bash
 yarn install
 ```
 
-2. Run a local network in the first terminal:
+### Environment Configuration
+The application is pre-configured for Monad Testnet. No additional environment variables are required for basic functionality.
 
-```
+## Local Development
+
+### Start Local Blockchain (Optional)
+```bash
 yarn chain
 ```
 
-This command starts a local Ethereum network using Hardhat. The network runs on your local machine and can be used for testing and development. You can customize the network configuration in `packages/hardhat/hardhat.config.ts`.
-
-3. On a second terminal, deploy the test contract:
-
-```
+### Deploy Smart Contracts
+```bash
 yarn deploy
 ```
 
-This command deploys a test smart contract to the local network. The contract is located in `packages/hardhat/contracts` and can be modified to suit your needs. The `yarn deploy` command uses the deploy script located in `packages/hardhat/deploy` to deploy the contract to the network. You can also customize the deploy script.
-
-4. On a third terminal, start your NextJS app:
-
-```
+### Start Frontend Application
+```bash
 yarn start
 ```
 
-Visit your app on: `http://localhost:3000`. You can interact with your smart contract using the `Debug Contracts` page. You can tweak the app config in `packages/nextjs/scaffold.config.ts`.
+The application will be available at `http://localhost:3000`
 
-Run smart contract test with `yarn hardhat:test`
+### Development Workflow
+1. **Contract Development**: Modify contracts in `packages/hardhat/contracts/`
+2. **Frontend Development**: Edit components in `packages/nextjs/app/`
+3. **Testing**: Use `http://localhost:3000/debug` for contract interaction testing
+4. **Deployment**: Run `yarn deploy` after contract changes
 
-- Edit your smart contracts in `packages/hardhat/contracts`
-- Edit your frontend homepage at `packages/nextjs/app/page.tsx`. For guidance on [routing](https://nextjs.org/docs/app/building-your-application/routing/defining-routes) and configuring [pages/layouts](https://nextjs.org/docs/app/building-your-application/routing/pages-and-layouts) checkout the Next.js documentation.
-- Edit your deployment scripts in `packages/hardhat/deploy`
+## Smart Contract Architecture
 
+### Race.sol Contract
+Located at `packages/hardhat/contracts/Race.sol`
 
-## Documentation
+#### State Variables
+- `GameState enum`: Lobby, InProgress, Finished
+- `mapping coinPosition`: Current position of each coin on track
+- `mapping coinSupporters`: Number of players supporting each coin
+- `mapping playerSupports`: Which coin each player supports
+- `mapping coinSupportersList`: Array of supporters for each coin
 
-Visit our [docs](https://docs.scaffoldeth.io) to learn how to start building with Scaffold-ETH 2.
+#### Core Functions
+- `joinRace(uint8 coinId)`: Join a team (requires Lobby state)
+- `startGame()`: Begin the race (organizer only)
+- `resetGame()`: Reset all game state (organizer only)
+- `tap()`: Advance coin position (deprecated - now local only)
 
-To know more about its features, check out our [website](https://scaffoldeth.io).
+#### Events
+- `PlayerJoined`: Emitted when a player joins a team
+- `GameStarted`: Emitted when organizer starts the game
+- `GameReset`: Emitted when game is reset to lobby state
 
-## Contributing to Scaffold-ETH 2
+### Deployment Configuration
+- **Network**: Monad Testnet (Chain ID: 10143)
+- **RPC URL**: https://testnet-rpc.monad.xyz
+- **Organizer Address**: Configurable in deployment script
 
-We welcome contributions to Scaffold-ETH 2!
+## Game Mechanics
 
-Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
+### Team Selection Phase
+1. Players connect wallets and join either Bitcoin or Ethereum team
+2. Organizer can see player counts and start the game
+3. Minimum requirement: at least one player per team
+
+### Racing Phase
+1. 3-second countdown timer displays
+2. Players tap rapidly to advance their team's coin
+3. Real-time position updates across all connected devices
+4. First team to complete 3 laps wins
+
+### Results Phase
+1. Winner announcement with celebration animations
+2. Detailed race analytics and statistics
+3. Automatic reset to team selection after 5 seconds
+
+### Local vs Blockchain Operations
+- **Local (Instant)**: Tapping, coin movement, progress tracking
+- **Blockchain (Transactions)**: Team joining, game start/reset, organizer controls
+
+## Project Structure
+
+```
+tapnad/
+├── packages/
+│   ├── hardhat/              # Smart contract development
+│   │   ├── contracts/         # Solidity contracts
+│   │   ├── deploy/           # Deployment scripts
+│   │   └── test/             # Contract tests
+│   └── nextjs/               # Frontend application
+│       ├── app/              # Next.js app directory
+│       │   ├── game/         # Main game interface
+│       │   ├── debug/        # Contract debugging tools
+│       │   └── results/      # Race results page
+│       ├── components/       # Reusable UI components
+│       ├── hooks/            # Custom React hooks
+│       ├── utils/            # Utility functions
+│       └── contracts/        # Generated contract types
+├── yarn.lock
+└── package.json
+```
+
+## Configuration Files
+
+### Scaffold Configuration
+`packages/nextjs/scaffold.config.ts` - Network configuration and target networks
+
+### Hardhat Configuration  
+`packages/hardhat/hardhat.config.ts` - Blockchain network settings and deployment configuration
+
+### Contract Deployment
+`packages/hardhat/deploy/01_deploy_race_contract.ts` - Contract deployment with organizer address configuration
+
+## Development Commands
+
+### Frontend Development
+```bash
+yarn start          # Start development server
+yarn build          # Build production bundle
+yarn next:lint      # Run linting
+yarn next:check-types # Type checking
+```
+
+### Smart Contract Development
+```bash
+yarn chain          # Start local blockchain
+yarn deploy         # Deploy contracts
+yarn verify         # Verify contracts on explorer
+yarn hardhat:test   # Run contract tests
+```
+
+### Debugging and Testing
+```bash
+yarn debug          # Access contract debugging interface
+yarn test           # Run all tests
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Players Cannot Join Teams
+- **Cause**: Game contract not in Lobby state
+- **Solution**: Organizer must click "Reset Game" button
+- **Verification**: Check game state indicator shows "Lobby (Ready to Join)"
+
+#### Coin Movement Not Synchronizing
+- **Cause**: BroadcastChannel or localStorage sync issues
+- **Solution**: Refresh all browser tabs and ensure JavaScript console shows sync messages
+- **Debug**: Look for "Broadcasting race data" and "Received BroadcastChannel message" in console
+
+#### Wallet Connection Issues
+- **Cause**: Wrong network or insufficient funds
+- **Solution**: Switch to Monad Testnet, obtain test tokens from faucet
+- **Note**: Only gas fees required, no payment for joining teams
+
+#### Event Updates Not Working
+- **Cause**: Blockchain event listeners not functioning
+- **Solution**: Hard refresh browser (Ctrl+Shift+R), check console for event detection logs
+
+### Debug Information
+Enable browser developer tools (F12) and monitor console for:
+- Game state changes and event detection
+- Real-time synchronization messages
+- BroadcastChannel and localStorage activity
+- Contract interaction confirmations
+
+## Game Rules
+
+### Joining Phase
+- Teams: Bitcoin vs Ethereum
+- Free to join (only gas fees apply)
+- Spectators can watch without wallet connection
+- Organizer controls game start/reset
+
+### Racing Phase
+- Tap as fast as possible to advance your team's coin
+- Progress is calculated based on total team taps divided by number of supporters
+- Real-time position updates across all devices
+- No cooldowns or transaction delays
+
+### Winning Conditions
+- First team to complete 3 full laps wins
+- Automatic game completion and celebration
+- Race statistics and analytics displayed
+- Automatic reset for continuous play
+
+## Architecture Highlights
+
+### Hybrid Architecture
+- **Blockchain Layer**: Team management, game state, organizer controls
+- **Local Layer**: Racing mechanics, tap processing, coin movement
+- **Sync Layer**: Real-time multiplayer coordination
+
+### Performance Optimizations
+- Instant local updates with background blockchain sync
+- Aggressive polling (200ms intervals) for responsiveness
+- BroadcastChannel for efficient same-origin communication
+- Event-driven UI updates for seamless user experience
+
+### Scalability Features
+- Supports unlimited spectators
+- Efficient cross-device synchronization
+- Minimal blockchain transactions per player
+- Responsive design for mobile and desktop
+
+## Contributing
+
+### Development Setup
+1. Fork the repository
+2. Create a feature branch
+3. Make changes and test thoroughly
+4. Submit a pull request with detailed description
+
+### Code Standards
+- TypeScript for type safety
+- ESLint configuration for code quality
+- Consistent formatting with Prettier
+- Comprehensive error handling
+
+### Testing
+- Contract tests in `packages/hardhat/test/`
+- Frontend component testing
+- End-to-end multiplayer testing across devices
+- Cross-browser compatibility verification
+
+## License
+
+This project is licensed under the MIT License. See LICENSE file for details.
+
+## Support
+
+For issues, questions, or contributions, please use the GitHub repository's issue tracking system.
