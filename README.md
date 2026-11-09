@@ -1,4 +1,11 @@
-# Tapnad - Multiplayer Blockchain Racing Game
+<h1 align="center">Tapnad</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Monad%20Testnet-2563eb?style=for-the-badge" alt="Monad Testnet" />
+  <img src="https://img.shields.io/badge/Next.js-7c3aed?style=for-the-badge" alt="Next.js" />
+  <img src="https://img.shields.io/badge/TypeScript-059669?style=for-the-badge" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Solidity-475569?style=for-the-badge" alt="Solidity" />
+</p>
 
 Tapnad is a real-time multiplayer coin racing game built on the Monad blockchain. Players join competing teams (Bitcoin vs Ethereum) and engage in fast-paced tap-to-advance racing around a circular track.
 
